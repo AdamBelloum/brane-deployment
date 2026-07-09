@@ -1,0 +1,22 @@
+# roles/cleanup/tasks/main.yml
+- name: Stop and remove Brane services
+  ansible.builtin.shell: |
+    # Attempt a graceful stop via branectl if available
+    if command -v branectl &> /dev/null; then
+      branectl stop || true
+    fi
+    # Force removal of all containers associated with brane
+    docker ps -a --filter "name=brane-*" -q | xargs -r docker rm -f
+    # Clean up associated networks to avoid IP conflicts
+    docker network prune -f
+  args:
+    executable: /bin/bash
+
+- name: Remove stale Brane configuration files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  become: yes  # <--- This is the key
+  loop:
+    - /usr/local/bin/branectl
+    - /etc/brane/

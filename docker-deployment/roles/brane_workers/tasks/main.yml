@@ -1,0 +1,89 @@
+---
+# tasks file for brane_workers
+
+# Step 0: Ensure branectl is installed
+- name: Install branectl binary (v3.0.0-nightly)
+  become: yes
+  ansible.builtin.get_url:
+    url: https://github.com/BraneFramework/brane/releases/download/nightly/branectl-linux-x86_64
+    dest: /usr/local/bin/branectl
+    mode: '0755'
+    force: yes
+
+# Existing Step A: Directory Structure
+- name: Create Brane directory structure
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - ~/config/certs
+    - ~/config/certs/central_hub
+    - ~/target/release
+    - ~/config/secrets
+    - ~/data
+    - ~/results
+    - /tmp/data 
+    - /tmp/results 
+    - ~/packages
+  when: inventory_hostname in groups['worker_nodes']
+
+# Step B.1: Download Worker Image
+- name: Download worker image
+  ansible.builtin.command: "branectl download services worker -f"
+
+# Step B.2: Generate backend.yml
+- name: Generate backend.yml
+  ansible.builtin.command: "branectl generate backend -f -p ./config/backend.yml local"
+
+# Step B.3: Generate proxy.yml
+- name: Generate proxy.yml
+  ansible.builtin.command: "branectl generate proxy -f -p ./config/proxy.yml"
+
+# ===========================================================================================
+#
+# Worker certificates 
+#
+# have to be singed using the central hub ca.pem
+# - first we need to create the central hub ca.pem and ca-key.pem
+# - cp the ca.pem amd ca-key.pem to the workers nodes                    --[role: central_hub]
+# - then we can genereate and copy the workers certicates to Central_hub --[role: exchange_certificates]
+# - cp certificates is done directly between Central_hub and worker node via scp 
+#
+#=======================================================================================
+
+# Step B.5: Generate Policy Keys (Deliberation and Expert)#
+- name: Generate policy keys
+  ansible.builtin.command: "branectl generate policy_secret -f -p ./config/secrets/{{ item }}"
+  loop:
+    - policy_store_secret.json
+    - policy_infra_secret.json
+    - policy_delib_secret.json
+    - policy_expert_secret.json
+
+# Step B.6: Generate policy database
+- name: Generate policy database
+  # TOBE FIXED when we know new version  of branectl
+  ansible.builtin.command: "branectl generate policy_database -f -p ./policies.db"
+  #args: { chdir: ~/brane-central }
+
+# Step B.7: Generate node.yml and move it
+- name: Generate node.yml
+  ansible.builtin.command:
+      cmd: >
+        branectl generate node worker 
+        --policy-delib-secret ./config/secrets/policy_delib_secret.json 
+        --policy-store-secret ./config/secrets/policy_store_secret.json 
+        {{ node_ip }} {{ location_id }}
+  args:
+    creates: "~/node.yml"
+  when: inventory_hostname in groups['worker_nodes']
+
+- name: Move node configuration to config folder
+  ansible.builtin.command: "cp node.yml ./config/node.yml"
+  #args: { chdir: ~/brane-central }
+
+# Step Start worker serviced
+#- name: Start worker serviced
+#  See role: start_services
+#  ======================

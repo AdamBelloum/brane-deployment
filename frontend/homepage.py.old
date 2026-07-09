@@ -1,0 +1,48 @@
+import streamlit as st
+
+st.set_page_config(page_title="Brane Hub Console", page_icon="🌐", layout="wide")
+
+st.title("🌐 Brane Distributed Framework Console")
+with st.expander("📖 System Guide & Overview", expanded=True):
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("""
+        **What it does:** Serves as the central command hub monitoring the health and IP distribution of your distributed Brane cluster infrastructure.
+        """)
+    with col_b:
+        st.markdown("""
+        **Who is this for:** System Administrators, Developers, and Data Scientists.
+        **Prerequisites:** Target infrastructure nodes must be active on your network layer.
+        """)
+st.write("Welcome to the unified Brane management platform. Use the sidebar to deploy infrastructure, stage packages, or write computations.")
+
+st.divider()
+
+st.subheader("🖥️ Target Node Cluster Topology Status")
+
+# Columns to show status panels side by side
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric(label="Central Hub (hub-vm-1)", value="145.100.135.209", delta="Active")
+    st.info("**Role**: Central Control, API Gateway, Orchestrator")
+
+with col2:
+    st.metric(label="Worker Node 1 (worker-vm-2)", value="145.100.135.172", delta="Active")
+    st.info("**Location ID**: client-node-1")
+
+with col3:
+    st.metric(label="Worker Node 2 (worker-vm-3)", value="145.100.135.241", delta="Active")
+    st.info("**Location ID**: client-node-2")
+
+# Add this block at the end of homepage.py to display universal ecosystem links
+with st.sidebar:
+    st.divider()
+    st.markdown("### 🌐 Official Brane Resources")
+
+    # Clean hyperlink buttons matching your links
+    st.link_button("🏠 Official Website", "https://brane.software/")
+    st.link_button("📚 Documentation", "https://docs.brane.software/")
+    st.link_button("💻 GitHub Repository", "https://github.com/BraneFramework/brane")
+
+    st.caption("Brane Distributed Framework System Dashboard v1.0.0")

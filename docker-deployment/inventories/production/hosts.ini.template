@@ -1,0 +1,7 @@
+[central_hub]
+# Enter your central controller configurations below
+# Example: hub-vm-1 ansible_host=0.0.0.0
+
+[worker_nodes]
+# Enter your distributed compute worker configurations below
+# Example: worker-vm-2 ansible_host=0.0.0.0 location_id=client-node-1

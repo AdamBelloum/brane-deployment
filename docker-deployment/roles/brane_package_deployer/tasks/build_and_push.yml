@@ -1,0 +1,20 @@
+---
+- name: Parse package name from container.yml configuration
+  shell: "grep 'name:' {{ package_yaml_path }} | awk '{print $2}'"
+  register: parsed_package_name
+  changed_when: false
+
+- name: "Compile Brane Package: {{ parsed_package_name.stdout }}"
+  command: "brane package build ./container.yml"
+  args:
+    chdir: "{{ package_dir }}"
+
+- name: "Register and Push Package: {{ parsed_package_name.stdout }} to Infrastructure Engine"
+  command: "brane package push {{ parsed_package_name.stdout }}"
+  args:
+    chdir: "{{ package_dir }}"
+
+- name: "Clean up staging folder for: {{ parsed_package_name.stdout }}"
+  file:
+    path: "{{ package_dir }}"
+    state: absent

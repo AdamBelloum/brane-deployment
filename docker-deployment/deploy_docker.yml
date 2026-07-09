@@ -1,0 +1,30 @@
+---
+- name: Phase 1 - Uniform Container Engine Baseline Synchronization
+  hosts: all
+  become: yes
+  roles:
+    - docker_setup
+
+- name: Phase 2 - Initialize Central Infrastructure Engine and Trust Roots
+  hosts: central_hub
+  roles:
+    - brane_central
+
+- name: Phase 3 - Dynamic Node Registration and Worker Node Deployment
+  hosts: worker_nodes
+  roles:
+    - brane_workers
+
+- name: Phase 4 - Post-Flight Administration Key Purging
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Ensure localized control machine certificate staging is purged
+      file:
+        path: /tmp/brane_certs
+        state: absent
+
+- name: Phase 5 - Admin-Led Verified Function Deployments
+  hosts: central_hub
+  roles:
+    - brane_package_deployer

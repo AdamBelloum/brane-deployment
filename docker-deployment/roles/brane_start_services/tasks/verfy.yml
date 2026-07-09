@@ -1,0 +1,10 @@
+# roles/your_role/tasks/verify.yml
+- name: Verify service is running
+  ansible.builtin.command: systemctl is-active your_service
+  register: service_status
+  changed_when: false
+
+- name: Assert service is active
+  ansible.builtin.assert:
+    that: service_status.stdout == "active"
+    fail_msg: "The service is not running as expected."

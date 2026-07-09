@@ -1,0 +1,6 @@
+# Ignore live, private production inventories
+docker-deployment/inventories/production/hosts.ini
+
+# Ignore local python virtual environments
+**/venv/
+__pycache__/

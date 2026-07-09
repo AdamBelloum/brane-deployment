@@ -1,0 +1,59 @@
+---
+# 1. Ensure directories exist on workers
+- name: Ensure certificate directory exists on workers
+  ansible.builtin.file:
+    path: ~/brane-central/config/certs/
+    state: directory
+  when: inventory_hostname in groups['worker_nodes']
+
+# 2. Distribute CA files from Controller to Workers
+#- name: Distribute CA files to all worker nodes
+#    # Ensure these exist in your controller's 'config/certs/' folder
+#  ansible.builtin.copy:
+#    src: "~/config/certs/{{ item }}"
+#    dest: "~/config/certs/{{ inventory_hostname }}/{{ item }}"
+#    mode: '0600'
+#  delegate_to: "{{ groups['central_hub'][0] }}"
+#  when: inventory_hostname in groups['central_hub']
+
+- name: Distribute CA files from Hub to Worker
+  ansible.builtin.shell: >
+    scp -o StrictHostKeyChecking=accept-new 
+    ~/config/certs/{{ item }} 
+    {{ hostvars[inventory_hostname]['ansible_host'] }}:~/config/certs/central_hub/{{ item }}
+  delegate_to: "{{ groups['central_hub'][0] }}"
+  loop:
+    - ca.pem
+    - ca-key.pem
+  when: inventory_hostname in groups['worker_nodes']
+
+# Step B.4 Generate worker certificates locally on each worker
+#- name: Generate worker certs on worker nodes
+#  ansible.builtin.command:
+#    cmd: "branectl generate certs client {{ location_id }} -f -p ./config/client-certs "
+    #chdir: ~/brane-central/config/certs/
+    #    creates: "~/config/certs/client-certs/ca.pem"
+    #  when: inventory_hostname in groups['worker_nodes']
+
+# 3.  Generate worker certificates locally on each worker
+- name: Generate worker certs on worker nodes
+  ansible.builtin.command:
+    cmd: >
+      branectl generate certs client {{ location_id }}
+      -p ./config/certs/ 
+      -c ./config/certs/central_hub/ca.pem 
+      -k ./config/certs/central_hub/ca-key.pem
+    #chdir: ~/brane-central/
+  args:
+    creates: "~/config/certs/ca.pem"
+  when: inventory_hostname in groups['worker_nodes']
+
+# 4. copy  the generated client certs back to central_hub
+- name: Pull CA files from worker to central hub
+  ansible.builtin.command: >
+    scp -o StrictHostKeyChecking=accept-new 
+    {{ hostvars[inventory_hostname]['ansible_host'] }}:~/config/certs/{{ item }} ~/config/certs/{{ location_id }}/{{ item }} 
+  delegate_to: "{{ groups['central_hub'][0] }}"
+  loop:
+    - ca.pem
+  when: inventory_hostname in groups['worker_nodes']

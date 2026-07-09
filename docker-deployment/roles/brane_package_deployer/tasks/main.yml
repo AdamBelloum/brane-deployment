@@ -1,0 +1,53 @@
+---
+- name: Ensure Brane user-facing CLI tool is installed
+  get_url:
+    url: "{{ brane_cli_url }}"
+    dest: /usr/local/bin/brane
+    mode: '0755'
+  become: yes
+
+- name: Authenticate Brane CLI with the Central Hub instance
+  command: "brane login {{ brane_hub_api }}"
+
+# --- 1. Check if there are any files to deploy ---
+- name: Check for developer packages in the local files directory
+  delegate_to: localhost
+  find:
+    paths: "{{ role_path }}/files/"
+    file_type: directory
+    recurse: no
+  register: local_packages
+
+# --- 2. Graceful Exit / Skip Logic ---
+- name: Notify administrator when no packages are found
+  debug:
+    msg: "Notice: The files/ directory is empty. No new Brane functions to deploy. Skipping loop."
+  when: local_packages.matched == 0
+
+- name: Sync developer package source folders to the execution host
+  copy:
+    src: "{{ item.path }}"
+    dest: "{{ ansible_env.HOME }}/brane_packages_staging/"
+    mode: '0755'
+  loop: "{{ local_packages.files }}"
+  when: local_packages.matched > 0
+
+- name: Find all valid container.yml package blueprints on the host
+  find:
+    paths: "{{ ansible_env.HOME }}/brane_packages_staging/"
+    recurse: yes
+    patterns: 'container.yml'
+  register: found_packages
+  when: local_packages.matched > 0
+
+# --- 3. Only trigger the loop if packages actually exist ---
+- name: Automate Package Compile and Registration Loop
+  include_tasks: build_and_push.yml
+  vars:
+    package_yaml_path: "{{ item.path }}"
+    package_dir: "{{ item.path | dirname }}"
+  loop: "{{ found_packages.files }}"
+  when: >
+    local_packages.matched > 0 and 
+    found_packages.matched is defined and 
+    found_packages.matched > 0

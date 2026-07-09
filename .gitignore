@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Streamlit operational configurations
+.streamlit/
+
+# Brane local temporary cache workspaces
+workflow_codes/
+policies/
+/tmp/brane-*
+/tmp/hello-world-test/
+
+# Secure certificates and secrets (Crucial for infrastructure safety)
+*.pem
+*.key
+*.crt
+*.json
+docker-deployment/inventories/production/hosts.ini
+!docker-deployment/inventories/production/hosts.ini.template
+
+# OS files
+.DS_Store
+Thumbs.db

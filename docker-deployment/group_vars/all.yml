@@ -1,0 +1,7 @@
+---
+ansible_user: adam 
+branectl_url: "https://github.com/braneframework/brane/releases/latest/download/branectl-linux-x86_64"
+
+# variables for package deployment
+brane_cli_url: "https://github.com/braneframework/brane/releases/latest/download/brane-linux-x86_64"
+brane_hub_api: "http://145.100.135.209:30051"  # The IP of your Central Hub (VM 1)
