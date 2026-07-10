@@ -1,0 +1,14 @@
+---
+- name: Ensure targeted Helm chart configuration directory exists
+  file:
+    path: "{{ helm_chart_destination }}"
+    state: directory
+    mode: '0755'
+
+- name: Sync Helm Chart manifest templates to the Central Hub
+  copy:
+    src: brane-chart/
+    dest: "{{ helm_chart_destination }}/"
+
+- name: Execute application stack orchestration deployment via Helm
+  command: "helm upgrade --install brane {{ helm_chart_destination }} --namespace default"

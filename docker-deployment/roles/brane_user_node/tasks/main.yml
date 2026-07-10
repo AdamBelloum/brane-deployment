@@ -9,7 +9,8 @@
 
 - name: Download and install Brane CLI
   ansible.builtin.get_url:
-    url: https://github.com/BraneFramework/brane/releases/download/nightly/brane-linux-x86_64
+    # url: https://github.com/BraneFramework/brane/releases/download/nightly/brane-linux-x86_64
+    url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}"
     dest: /usr/local/bin/brane
     mode: '0755'
 

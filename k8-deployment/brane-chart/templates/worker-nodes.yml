@@ -1,0 +1,63 @@
+{{- if .Values.workerNodes.enabled }}
+{{- range .Values.workerNodes.instances }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: brane-worker-{{ .name }}
+  labels:
+    app: brane-worker
+    instance: {{ .name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: brane-worker
+      instance: {{ .name }}
+  template:
+    metadata:
+      labels:
+        app: brane-worker
+        instance: {{ .name }}
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: {{ .nodeSelectorValue }}
+      containers:
+        - name: worker-runtime
+          image: "{{ $.Values.workerNodes.image.repository }}:{{ $.Values.workerNodes.image.tag }}"
+          ports:
+            - containerPort: 50052
+              name: worker-port
+          env:
+            - name: BRANE_LOCATION_ID
+              value: {{ .name | quote }}
+            - name: BRANE_HOSTNAME
+              value: {{ .hostIP | quote }}
+            - name: CENTRAL_HUB_URL
+              value: "grpc://{{ $.Values.global.centralHost }}:30051"
+          volumeMounts:
+            - name: certs-volume
+              mountPath: /brane/certs
+              readOnly: true
+            - name: worker-storage
+              mountPath: /data
+      volumes:
+        - name: certs-volume
+          secret:
+            secretName: brane-cluster-certs
+        - name: worker-storage
+          persistentVolumeClaim:
+            claimName: brane-worker-pvc-{{ .name }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: brane-worker-pvc-{{ .name }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ $.Values.workerNodes.storageSize }}
+---
+{{- end }}
+{{- end }}

@@ -1,0 +1,25 @@
+# brane-chart/values.yaml
+global:
+  centralHost: "192.168.1.10" # Public/Static IP of VM 1
+
+centralHub:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: braneframework/brane-central
+    tag: latest
+  storageSize: 20Gi
+
+workerNodes:
+  enabled: true
+  image:
+    repository: braneframework/brane-worker
+    tag: latest
+  storageSize: 50Gi
+  instances:
+    - name: client-node-1
+      nodeSelectorValue: "worker-vm-2"
+      hostIP: "192.168.1.11"
+    - name: client-node-2
+      nodeSelectorValue: "worker-vm-3"
+      hostIP: "192.168.1.12"

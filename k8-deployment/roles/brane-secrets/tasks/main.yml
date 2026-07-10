@@ -1,0 +1,33 @@
+---
+- name: Apply node scheduler topology labels to K8s nodes
+  command: "kubectl label node {{ item.name }} brane.role={{ item.role }} --overwrite"
+  loop:
+    - { name: 'hub-vm-1', role: 'central' }
+    - { name: 'worker-vm-2', role: 'worker' }
+    - { name: 'worker-vm-3', role: 'worker' }
+
+- name: Download branectl configuration utility for certificate setup
+  get_url:
+    url: "{{ branectl_url }}"
+    dest: /tmp/branectl
+    mode: '0755'
+
+- name: Initialize Root Authority and Infrastructure Certificates
+  command: /tmp/branectl generate certs central --certs-dir /tmp/brane-certs
+  args:
+    creates: /tmp/brane-certs/ca.pem
+
+- name: Ingest X.509 Identities as Native Kubernetes Secrets
+  command: >
+    kubectl create secret generic brane-cluster-certs
+    --from-file=ca.pem=/tmp/brane-certs/ca.pem
+    --from-file=ca-key.pem=/tmp/brane-certs/ca-key.pem
+    --dry-run=client -o yaml | kubectl apply -f -
+
+- name: Securely erase raw file-based secrets from the local host filesystem
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/branectl
+    - /tmp/brane-certs

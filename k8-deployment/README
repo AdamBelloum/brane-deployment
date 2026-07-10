@@ -1,0 +1,48 @@
+brane-deployment prohject structure
+==================================
+brane-k8s-deployment/ 
+├── inventories/ 
+│   └── production/
+│       └── hosts.ini            # Defines VM host IPs and deployment variables 
+├── roles/ 
+│   ├── k3s_setup/               # Role to provision the multi-node K3s cluster 
+│   │   └── tasks/ 
+│   │       └── main.yml 
+│   ├── brane_secrets/           # Role to handle certificate generation & K8s secrets 
+│   │   └── tasks/ 
+│   │       └── main.yml 
+│   └── brane_helm/              # Role to manage the Helm chart lifecycle 
+│       └── tasks/ │           └── main.yml 
+├── group_vars/ 
+│   └── all.yml                  # Global configurations (versions, chart paths) 
+├── brane-chart/                 # The complete Helm Chart directory tree 
+│   ├── Chart.yaml 
+│   ├── values.yaml 
+│   └── templates/ 
+│       ├── central-hub.yaml 
+│       └── worker-nodes.yaml 
+└── deploy.yml                   # The master playbook driving the entire execution
+
+Verification and Monitoring
+============================
+
+Once executed, management commands shift away from raw host configuration tasks. You can manage and inspect your entire cluster natively using standard Kubernetes tools:
+
+Bash
+
+# Check the deployment status of your containers across all VMs
+kubectl get pods -o wide
+
+# Check the automatically provisioned persistent data volumes
+kubectl get pvc
+
+# Stream runtime execution logs from worker node 1
+kubectl logs -l app=brane-worker,instance=client-node-1 --follow
+
+How to Run the Deployment
+==========================
+
+Simply point the main deployment playbook to your target inventory directory structure from the terminal root path:
+
+ansible-playbook -i inventories/production/hosts.ini deploy.yml
+

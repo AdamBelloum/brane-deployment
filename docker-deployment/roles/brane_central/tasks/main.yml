@@ -6,7 +6,8 @@
 - name: Install branectl binary
   become: yes
   ansible.builtin.get_url:
-    url: https://github.com/BraneFramework/brane/releases/download/nightly/branectl-linux-x86_64
+    #url: https://github.com/BraneFramework/brane/releases/download/nightly/branectl-linux-x86_64
+    url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}"
     dest: /usr/local/bin/branectl
     mode: '0755'
 
@@ -43,7 +44,12 @@
 # Step B.2: Generate infrastructure configuration [cite: 14]
 - name: Generate infrastructure configuration
   ansible.builtin.command:
-    cmd: "branectl generate infra -f -p ./config/infra.yml client-node-1:145.100.135.172 client-node-2:145.100.135.241"
+    cmd: >
+          branectl generate infra -f -p ./config/infra.yml
+          {% for node in groups['worker_nodes'] %}
+          {{ hostvars[node]['ansible_host'] }}
+          {% endfor %}
+    # cmd: "branectl generate infra -f -p ./config/infra.yml client-node-1:145.100.135.172 client-node-2:145.100.135.241"
   args:
     creates: ./config/infra.yml
 

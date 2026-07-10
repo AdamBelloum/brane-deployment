@@ -1,7 +1,7 @@
 ---
-ansible_user: adam 
-branectl_url: "https://github.com/braneframework/brane/releases/latest/download/branectl-linux-x86_64"
+# Dynamic routing—pulls the IP automatically from whatever is in hosts.ini
+brane_hub_api: "http://{{ groups['central_hub'][0] }}:30051"
 
-# variables for package deployment
-brane_cli_url: "https://github.com/braneframework/brane/releases/latest/download/brane-linux-x86_64"
-brane_hub_api: "http://145.100.135.209:30051"  # The IP of your Central Hub (VM 1)
+# Dynamically detects system names (linux/darwin) and architectures (x86_64/aarch64)
+branectl_url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}"
+brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/nightly/brane-{{ ansible_system | lower }}-{{ ansible_architecture }}"

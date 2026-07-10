@@ -1,0 +1,4 @@
+---
+ansible_user: ubuntu
+branectl_url: "https://github.com/braneframework/brane/releases/latest/download/branectl-linux-x86_64"
+helm_chart_destination: "/home/ubuntu/brane-chart"

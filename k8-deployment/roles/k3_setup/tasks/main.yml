@@ -1,0 +1,23 @@
+---
+- name: Install K3s on Control Plane (VM 1)
+  shell: curl -sfL https://get.k3s.io | sh -s - --node-ip={{ central_ip }}
+  when: "'central_hub' in group_names"
+
+- name: Extract K3s cluster join token from Control Plane
+  slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_token
+  when: "'central_hub' in group_names"
+
+- name: Share node token context globally across tasks
+  set_fact:
+    cluster_token: "{{ k3s_token.content | b64decode | trim }}"
+  when: "'central_hub' in group_names"
+  delegate_to: localhost
+  inherited_facts: yes
+
+- name: Connect Worker Nodes to the Control Plane (VM 2 & VM 3)
+  shell: >
+    curl -sfL https://get.k3s.io | K3s_URL=https://{{ hostvars['hub-vm-1']['central_ip'] }}:6443 
+    K3s_TOKEN={{ hostvars['hub-vm-1']['cluster_token'] }} sh -
+  when: "'worker_nodes' in group_names"

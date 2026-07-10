@@ -5,7 +5,8 @@
 - name: Install branectl binary (v3.0.0-nightly)
   become: yes
   ansible.builtin.get_url:
-    url: https://github.com/BraneFramework/brane/releases/download/nightly/branectl-linux-x86_64
+    #url: https://github.com/BraneFramework/brane/releases/download/nightly/branectl-linux-x86_64
+    url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}"
     dest: /usr/local/bin/branectl
     mode: '0755'
     force: yes

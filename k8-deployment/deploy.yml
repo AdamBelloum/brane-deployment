@@ -1,0 +1,19 @@
+#3. Master Playbook
+#deploy.yml
+YAML
+---
+- name: Phase 1 - Provision Multi-Node K3s Infrastructure Layer
+  hosts: k8s_cluster
+  become: yes
+  roles:
+    - k3s_setup
+
+- name: Phase 2 - Secure Identity Generation and Cluster Ingestion
+  hosts: central_hub
+  roles:
+    - brane_secrets
+
+- name: Phase 3 - Application Layer Stack Orchestration via Helm
+  hosts: central_hub
+  roles:
+    - brane_helm

@@ -1,0 +1,10 @@
+# 4. Embedded Helm Chart Configuration Specs
+# Your brane-chart/ template values map the underlying infrastructure resources without modifying the runtime roles directly:
+# brane-chart/Chart.yaml
+
+apiVersion: v2
+name: brane
+description: Production-grade Helm chart for a 3-node Brane federation cluster
+type: application
+version: 1.0.0
+appVersion: "3.0.0"

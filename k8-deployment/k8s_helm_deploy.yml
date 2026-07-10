@@ -1,0 +1,74 @@
+---
+- name: Construct Lightweight Multi-Node K3s Cluster
+  hosts: all
+  become: yes
+  tasks:
+    - name: Download and install K3s control plane binaries (VM 1)
+      shell: curl -sfL https://get.k3s.io | sh -s - --node-ip=192.168.1.10
+      when: inventory_hostname == 'hub-vm-1'
+
+    - name: Extract K3s cluster join token from control plane
+      slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: k3s_token
+      when: inventory_hostname == 'hub-vm-1'
+
+    - name: Share node token context globally across tasks
+      set_fact:
+        cluster_token: "{{ k3s_token.content | b64decode | trim }}"
+      when: inventory_hostname == 'hub-vm-1'
+      delegate_to: localhost
+      inherited_facts: yes
+
+    - name: Connect worker nodes to the control plane topology (VM 2 & VM 3)
+      shell: >
+        curl -sfL https://get.k3s.io | K3s_URL=https://192.168.1.10:6443 
+        K3s_TOKEN={{ hostvars['hub-vm-1']['cluster_token'] }} sh -
+      when: inventory_hostname != 'hub-vm-1'
+
+
+- name: Label Infrastructure and Handle Trust Ingestion via Helm
+  hosts: hub-vm-1
+  tasks:
+    - name: Apply explicit orchestrator scheduling topology labels to nodes
+      command: "kubectl label node {{ item.name }} brane.role={{ item.role }} --overwrite"
+      loop:
+        - { name: 'hub-vm-1', role: 'central' }
+        - { name: 'worker-vm-2', role: 'worker' }
+        - { name: 'worker-vm-3', role: 'worker' }
+
+    - name: Download local temporary branectl setup tool for root-of-trust bootstrap
+      get_url:
+        url: "https://github.com/braneframework/brane/releases/latest/download/branectl-linux-x86_64"
+        dest: /tmp/branectl
+        mode: '0755'
+
+    - name: Initialize root certificates inside a sandbox path
+      command: /tmp/branectl generate certs central --certs-dir /tmp/brane-certs
+      args:
+        creates: /tmp/brane-certs/ca.pem
+
+    - name: Inject x509 cryptographic identities as Native Kubernetes Secrets
+      command: >
+        kubectl create secret generic brane-cluster-certs
+        --from-file=ca.pem=/tmp/brane-certs/ca.pem
+        --from-file=ca-key.pem=/tmp/brane-certs/ca-key.pem
+        --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Securely purge raw certificates from host filesystem storage
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/branectl
+        - /tmp/brane-certs
+
+    - name: Copy target Helm chart template tree configurations to control node
+      copy:
+        src: ./brane-chart
+        dest: "{{ ansible_env.HOME }}/brane-chart"
+
+    - name: Execute declarative application deployment via Helm
+      command: helm upgrade --install brane ./brane-chart --namespace default
+      args:
+        chdir: "{{ ansible_env.HOME }}"
