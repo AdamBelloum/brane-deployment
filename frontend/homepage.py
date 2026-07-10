@@ -38,6 +38,7 @@ page_selection = st.sidebar.radio(
         "Cluster Configurator", 
         "Deploy Infrastructure", 
         "Deploy Packages",
+        "Deploy Brane CLI",
         "Editor Brane Scripts",
         "Editor Data Policy"
     ]
@@ -58,6 +59,8 @@ elif page_selection == "Deploy Infrastructure":
     render_infra_deploy()
 elif page_selection == "Deploy Packages":
     render_packages_deploy()
+elif page_selection == "Deploy Brane CLI":
+    render_cli_panel()
 elif page_selection == "Editor Brane Scripts":
     render_brane_scripts()
 elif page_selection == "Editor Data Policy":
