@@ -4,3 +4,7 @@ docker-deployment/inventories/production/hosts.ini
 # Ignore local python virtual environments
 **/venv/
 __pycache__/
+
+# Ignore generated deployment Helm charts
+**/brane-chart/
+**/charts/
