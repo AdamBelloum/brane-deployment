@@ -100,6 +100,29 @@ def render_cli_panel():
             except Exception as e:
                 st.error(f"Installation interrupted: {str(e)}")
 
+                v_proc = subprocess.Popen([executable_check, "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                for line in iter(v_proc.stdout.readline, ''):
+                    full_log += line
+                    log_area.code(full_log)
+                v_proc.stdout.close()
+                v_proc.wait()
+
+                # ===================================================================
+                # 🎯 INSERT THE NEW CODE STATE HERE (Replaces your original st.success)
+                # ===================================================================
+                st.success("🎉 Brane CLI binary successfully installed and verified in user-space!")
+
+                st.markdown("""
+                ### 🚀 Next Step: Verify Cluster Integration
+                To ensure your local `brane` CLI tool can correctly compile, register, and talk to your active Brane orchestration hub, please use the integration workspace:
+
+                1. Navigate to the **"Deploy Packages"** section using the sidebar menu.
+                2. Switch to the **"Run Automated System Smoke Test"** tab.
+                3. Trigger the **Hello World Integration Test** to verify container orchestration end-to-end.
+                """)
+
+            except Exception as e:
+                st.error(f"Installation interrupted: {str(e)}")
     # ==========================================
     # TAB 2: USER CLI COMMAND PANEL (`brane`)
     # ==========================================
@@ -223,3 +246,4 @@ def render_cli_panel():
             branectl generate policy_token <INITIATOR> <SYSTEM> <DURATION> -s <SECRET_PATH>
             ```
             """)
+
