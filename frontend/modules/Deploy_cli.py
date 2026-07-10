@@ -2,6 +2,7 @@ import os
 import platform
 import subprocess
 import streamlit as st
+from pathlib import Path
 
 def render_cli_panel():
     st.title("💻 Brane CLI Environment Manager & Command Reference")
@@ -16,7 +17,7 @@ def render_cli_panel():
         with col_b:
             st.markdown("""
             **Who is this for:** All platform participants (Scientists, Developers, and Administrators).
-            **Prerequisites:** Execution privileges to write binary assets into system path frameworks (`/usr/local/bin`).
+            **Prerequisites:** Local user workspace access. **No root/sudo required.**
             """)
 
     # Natively handle tabs to separate Installation from the Interactive CLI References
@@ -59,17 +60,26 @@ def render_cli_panel():
         
         if st.button("Download & Register Local Binary", type="primary", key="cli_download_btn"):
             log_area = st.empty()
-            full_log = "=== Launching Client Binary Provision Loop ===\n"
+            full_log = "=== Launching Sudo-less Client Binary Provision Loop ===\n"
             log_area.code(full_log)
             try:
                 if detected_os in ["Linux", "Darwin"]:
-                    target_path = "/usr/local/bin/brane"
+                    # Create ~/.local/bin safely within the user's home context
+                    local_bin_dir = Path.home() / ".local" / "bin"
+                    local_bin_dir.mkdir(parents=True, exist_ok=True)
+                    target_path = local_bin_dir / "brane"
+                    
+                    full_log += f"Creating local binary path: {local_bin_dir}\n"
                     full_log += f"Streaming payload via curl...\n"
                     log_area.code(full_log)
-                    subprocess.run(["curl", "-L", "-o", "./brane_temp", download_url], check=True)
-                    subprocess.run(["mv", "./brane_temp", target_path], check=True)
-                    subprocess.run(["chmod", "+x", target_path], check=True)
-                    full_log += f"✓ Binary deployed to {target_path}\n"
+                    
+                    # Direct download into user-space via absolute string paths
+                    subprocess.run(["curl", "-L", "-o", str(target_path), download_url], check=True)
+                    subprocess.run(["chmod", "+x", str(target_path)], check=True)
+                    
+                    full_log += f"✓ Binary deployed seamlessly to {target_path}\n"
+                    full_log += f"⚠️ Note: Ensure '{local_bin_dir}' is added to your system $PATH configuration.\n"
+                    
                 elif detected_os == "Windows":
                     target_path = os.path.expanduser("~\\AppData\\Local\\Microsoft\\WindowsApps\\brane.exe")
                     subprocess.run(["curl", "-L", "-o", target_path, download_url], check=True)
@@ -77,13 +87,16 @@ def render_cli_panel():
                     
                 full_log += "\n=== Testing Installation Integrity ===\n"
                 log_area.code(full_log)
-                v_proc = subprocess.Popen(["brane", "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                
+                # Point directly to the newly installed binary to ensure validation works even if $PATH hasn't reloaded
+                executable_check = str(target_path) if detected_os in ["Linux", "Darwin"] else "brane"
+                v_proc = subprocess.Popen([executable_check, "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 for line in iter(v_proc.stdout.readline, ''):
                     full_log += line
                     log_area.code(full_log)
                 v_proc.stdout.close()
                 v_proc.wait()
-                st.success("🎉 Brane CLI successfully installed!")
+                st.success("🎉 Brane CLI successfully installed without root requirements!")
             except Exception as e:
                 st.error(f"Installation interrupted: {str(e)}")
 
@@ -94,12 +107,16 @@ def render_cli_panel():
         st.subheader("🧑‍🔬 Developer & Data Scientist Command Reference")
         st.write("Manage packages, run workflows, and inspect active instances.")
         
-        # Live Interactive Query Tool Helper
         st.markdown("### ⚡ Quick Diagnostic Queries")
         col_u1, col_u2, col_u3 = st.columns(3)
         
-        # Simple Helper function to wrap running basic check commands live
         def run_check_cmd(cmd_list):
+            # Dynamic path expansion for runtime interactive checks
+            if platform.system() in ["Linux", "Darwin"]:
+                user_binary = str(Path.home() / ".local" / "bin" / cmd_list[0])
+                if os.path.exists(user_binary):
+                    cmd_list[0] = user_binary
+            
             st.info(f"Running: `{' '.join(cmd_list)}`")
             p = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             out, _ = p.communicate()
@@ -117,7 +134,6 @@ def render_cli_panel():
 
         st.divider()
         
-        # Dynamic Markdown reference tables directly from documentation
         col_t1, col_t2 = st.columns(2)
         with col_t1:
             st.markdown("""
@@ -149,7 +165,6 @@ def render_cli_panel():
         st.subheader("🛠️ Node Infrastructure & Administrative Management Panel")
         st.write("Download node infrastructure service packages, generate certificates, secrets, and manage cluster statuses.")
         
-        # Start / Stop Container Cluster Services Directly on the Host Engine
         st.markdown("### 🔌 Core Service Direct Switches")
         col_adm1, col_adm2, col_adm3 = st.columns(3)
         target_node_type = st.selectbox("Select Target Cluster Service Type Profile:", ["central", "worker", "proxy", "auxillary"], key="cli_node_type_select")
