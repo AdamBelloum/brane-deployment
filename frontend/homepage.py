@@ -13,8 +13,10 @@ if "global_pkg_logs" not in st.session_state:
     
 if "global_infra_status" not in st.session_state:
     st.session_state.global_infra_status = "idle"
+if "global_infra_proc" not in st.session_state:
+    st.session_state.global_infra_proc = None  # Holds the live Popen process
 if "global_infra_logs" not in st.session_state:
-    st.session_state.global_infra_logs = []
+    st.session_state.global_infra_logs = ""     # Continuous text log buffer
 
 # ===================================================================
 # 📦 LAZY LAUNCH MODULE IMPORTS

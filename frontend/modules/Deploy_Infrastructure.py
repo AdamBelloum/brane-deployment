@@ -29,60 +29,125 @@ def render_infra_deploy():
 
     st.divider()
 
-    # Updated target mapping to match our new decoupled playbook structure
-    phase = st.selectbox(
-        "Select Target Deployment Action:",
-        [
-            "Full Automated End-to-End Deployment (Recommended)",
-            "Pass 0: Uniform Container Engine Sync (docker_install)",
-            "Pass 2: Distribute Local Asset Keys (exchange_certs)",
-            "Pass 3: Launch Active Brane Cluster Services (start_services)"
-        ]
-    )
+    # Ensure the background process handle structure exists in session state
+    if "global_infra_proc" not in st.session_state:
+        st.session_state.global_infra_proc = None
 
-    tag_map = {
-        "Full Automated End-to-End Deployment (Recommended)": "all",
-        "Pass 0: Uniform Container Engine Sync (docker_install)": "docker_install",
-        "Pass 2: Distribute Local Asset Keys (exchange_certs)": "exchange_certs",
-        "Pass 3: Launch Active Brane Cluster Services (start_services)": "start_services"
-    }
-
-    selected_tag = tag_map[phase]
-
-    if st.button("Launch Ansible Playbook Sequence", type="primary"):
-        if selected_tag == "all":
-            cmd = ['ansible-playbook', '-i', INVENTORY, 'deploy-brane.yml']
-        else:
-            cmd = ['ansible-playbook', '-i', INVENTORY, 'deploy-brane.yml', '--tags', selected_tag]
+    # ===================================================================
+    # 🔄 LIVE BACKGROUND MONITORING ENGINE
+    # ===================================================================
+    # If a process is actively running, drain its output buffer without blocking the page
+    if st.session_state.global_infra_status == "running" and st.session_state.global_infra_proc is not None:
+        proc = st.session_state.global_infra_proc
         
-        # Live execution stream block
-        log_area = st.empty()
-        full_log = ""  
+        # Check if the process has finished on its own
+        return_code = proc.poll()
         
-        process = subprocess.Popen(
-            cmd, cwd=ANSIBLE_DIR,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        # Make stdout non-blocking so we can read whatever text is currently waiting
+        try:
+            os.set_blocking(proc.stdout.fileno(), False)
+            while True:
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                # Append to your global log list initialized in homepage.py
+                st.session_state.global_infra_logs.append(line)
+        except Exception:
+            pass
+
+        if return_code is not None:
+            # The process completed while we were monitoring or away!
+            if return_code == 0:
+                st.session_state.global_infra_status = "complete"
+            else:
+                st.session_state.global_infra_status = "failed"
+            st.session_state.global_infra_proc = None
+            st.rerun()
+
+    # ===================================================================
+    # 🗺️ RENDERING STATES
+    # ===================================================================
+    
+    # STATE 1: IDLE (Ready to run)
+    if st.session_state.global_infra_status == "idle":
+        phase = st.selectbox(
+            "Select Target Deployment Action:",
+            [
+                "Full Automated End-to-End Deployment (Recommended)",
+                "Pass 0: Uniform Container Engine Sync (docker_install)",
+                "Pass 2: Distribute Local Asset Keys (exchange_certs)",
+                "Pass 3: Launch Active Brane Cluster Services (start_services)"
+            ]
         )
+
+        tag_map = {
+            "Full Automated End-to-End Deployment (Recommended)": "all",
+            "Pass 0: Uniform Container Engine Sync (docker_install)": "docker_install",
+            "Pass 2: Distribute Local Asset Keys (exchange_certs)": "exchange_certs",
+            "Pass 3: Launch Active Brane Cluster Services (start_services)": "start_services"
+        }
+
+        selected_tag = tag_map[phase]
+
+        if st.button("Launch Ansible Playbook Sequence", type="primary"):
+            if selected_tag == "all":
+                cmd = ['ansible-playbook', '-i', INVENTORY, 'deploy-brane.yml']
+            else:
+                cmd = ['ansible-playbook', '-i', INVENTORY, 'deploy-brane.yml', '--tags', selected_tag]
+            
+            # Start the execution completely asynchronously using Popen
+            process = subprocess.Popen(
+                cmd, cwd=ANSIBLE_DIR,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                bufsize=1
+            )
+            
+            # Update session state properties immediately
+            st.session_state.global_infra_proc = process
+            st.session_state.global_infra_status = "running"
+            st.session_state.global_infra_logs = ["🛫 Spawning background execution thread...\n"]
+            st.rerun()
+
+    # STATE 2: ACTIVE DEPLOYMENT
+    elif st.session_state.global_infra_status == "running":
+        st.warning("⚡ Infrastructure deployment execution loop is actively running in the background!")
         
-        for line in iter(process.stdout.readline, ''):
-            full_log += line
-            log_area.code(full_log, language="bash")
-            
-        process.stdout.close()
-        return_code = process.wait()
+        col_mon1, col_mon2 = st.columns([1, 4])
+        with col_mon1:
+            if st.button("🔄 Refresh Logs", type="primary"):
+                st.rerun()
+        with col_mon2:
+            st.caption("You can safely switch to other pages. Click 'Refresh Logs' to see the latest streaming output.")
+
+    # STATE 3: COMPLETED SUCCESSFULLY
+    elif st.session_state.global_infra_status == "complete":
+        st.success("🎉 Ansible Run Sequence Terminated Successfully!")
+        st.info("""
+        ### 🏁 Next Step: Run System Verification Tests
+        Your distributed cluster nodes are now fully configured, securely certified, and interconnected! 
         
-        if return_code == 0:
-            st.success("🎉 Ansible Run Sequence Terminated Successfully!")
-            
-            # Restored original bright actionable guidance box 🚀
-            st.info("""
-            ### 🏁 Next Step: Run System Verification Tests
-            
-            Your distributed cluster nodes are now fully configured, securely certified, and interconnected! 
-            
-            To verify that the microservice grid can compile and execute workloads across your new worker matrix:
-            1. Navigate to **📦 Deploy Packages** using the left sidebar menu.
-            2. Run the automated **Hello World Cluster Smoke Test** to compile, register, and run your first distributed container payload!
-            """)
-        else:
-            st.error(f"Ansible run encountered an error. Exit Code: {return_code}")
+        To verify that the microservice grid can compile and execute workloads across your new worker matrix:
+        1. Navigate to **📦 Deploy Packages** using the left sidebar menu.
+        2. Run the automated **Hello World Cluster Smoke Test** to compile, register, and run your first distributed container payload!
+        """)
+        if st.button("Clear Deployment Session & Reset"):
+            st.session_state.global_infra_status = "idle"
+            st.session_state.global_infra_logs = []
+            st.rerun()
+
+    # STATE 4: FAILED EXECUTION
+    elif st.session_state.global_infra_status == "failed":
+        st.error("❌ Ansible deployment encountered an error state.")
+        if st.button("Clear Deployment Session & Retry"):
+            st.session_state.global_infra_status = "idle"
+            st.session_state.global_infra_logs = []
+            st.rerun()
+
+    # ===================================================================
+    # 📋 CONSOLE LOG DISPLAY WINDOW
+    # ===================================================================
+    if st.session_state.global_infra_logs:
+        st.subheader("📋 Live Execution Log Trace")
+        # Join the log list into a single string for st.code block formatting
+        log_text = "".join(st.session_state.global_infra_logs)
+        st.code(log_text, language="bash")
