@@ -15,8 +15,13 @@ TEMPLATE_PATH = os.path.join(ANSIBLE_DIR, "inventories/production/hosts.ini.temp
 
 def load_inventory():
     """Reads current host mappings safely from the filesystem."""
-    config = configparser.ConfigParser(allow_no_value=True, delimiters=(' ', '='))
-    config.optionxform = str 
+    config = configparser.ConfigParser(
+        allow_no_value=True, 
+        delimiters=(' ', '='),
+        comment_prefixes=('#', ';'),  # <-- ADD THIS LINE HERE!
+        inline_comment_prefixes=('#', ';')
+    )
+    config.optionxform = str
     if os.path.exists(INVENTORY_PATH):
         config.read(INVENTORY_PATH)
     return config
