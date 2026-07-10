@@ -3,6 +3,7 @@ import subprocess
 import configparser
 import zipfile
 import shutil
+from pathlib import Path
 import streamlit as st
 
 # ===================================================================
@@ -11,6 +12,25 @@ import streamlit as st
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__)) 
 REPO_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../..")) 
 INVENTORY_PATH = os.path.join(REPO_ROOT, "docker-deployment/inventories/production/hosts.ini")
+
+def get_brane_executable():
+    """Dynamically locates the brane CLI binary on the host machine."""
+    # 1. Check custom user-space binary install paths (~/.local/bin/brane or /usr/local/bin/brane)
+    user_local_bin = Path.home() / ".local" / "bin" / "brane"
+    if user_local_bin.exists() and os.access(user_local_bin, os.X_OK):
+        return str(user_local_bin)
+        
+    usr_local_bin = Path("/usr/local/bin/brane")
+    if usr_local_bin.exists() and os.access(usr_local_bin, os.X_OK):
+        return str(usr_local_bin)
+    
+    # 2. Fall back to exploring system directories via the environment $PATH
+    system_path = shutil.which("brane")
+    if system_path:
+        return system_path
+        
+    # 3. Default back to a raw string if not found, allowing standard errors to trigger
+    return "brane"
 
 def get_central_ip():
     config = configparser.ConfigParser(allow_no_value=True, delimiters=(' ', '='))
@@ -46,7 +66,7 @@ def render_packages_deploy():
     tab1, tab2 = st.tabs(["📁 Upload Custom Admin Package", "🧪 Run Automated System Smoke Test"])
 
     # ===================================================================
-    # TAB 1: CUSTOM USER PACKAGE UPLOADER (Matches original script layout)
+    # TAB 1: CUSTOM USER PACKAGE UPLOADER
     # ===================================================================
     with tab1:
         st.markdown("Use this tab to compile and register your custom functional Brane application containers.")
@@ -63,6 +83,7 @@ def render_packages_deploy():
             if not uploaded_manifest or not uploaded_source or not custom_package_name:
                 st.error("Please supply a manifest file, source zip archive, and target confirmation name to trigger the pipeline.")
             else:
+                brane_cli = get_brane_executable()
                 with st.status("🏗️ Building and Registering Custom Package...", expanded=True) as status:
                     user_dir = f"/tmp/brane-user-package-{custom_package_name}"
                     if os.path.exists(user_dir):
@@ -85,7 +106,7 @@ def render_packages_deploy():
                             os.chmod(os.path.join(root, file), 0o755)
 
                     st.write("🏗️ Calling backend Brane compiler tools...")
-                    build_res = subprocess.run(["brane", "package", "build", "./container.yml"], cwd=user_dir, capture_output=True, text=True)
+                    build_res = subprocess.run([brane_cli, "package", "build", "./container.yml"], cwd=user_dir, capture_output=True, text=True)
                     
                     if build_res.returncode != 0:
                         st.error(f"Compilation Failed:\n{build_res.stderr}")
@@ -93,10 +114,10 @@ def render_packages_deploy():
                         st.stop()
 
                     st.write(f"🔑 Verifying session authority against hub context (http://{central_ip})...")
-                    subprocess.run(["brane", "login", f"http://{central_ip}", "--username", "dashboard_user"], capture_output=True, text=True)
+                    subprocess.run([brane_cli, "login", f"http://{central_ip}", "--username", "dashboard_user"], capture_output=True, text=True)
                     
                     st.write(f"🚀 Injecting compiled container bundle `{custom_package_name}` into central node registry...")
-                    push_res = subprocess.run(["brane", "package", "push", custom_package_name], cwd=user_dir, capture_output=True, text=True)
+                    push_res = subprocess.run([brane_cli, "package", "push", custom_package_name], cwd=user_dir, capture_output=True, text=True)
                     
                     if push_res.returncode == 0:
                         status.update(label=f"✅ Package `{custom_package_name}` Registered Successfully!", state="complete")
@@ -106,13 +127,15 @@ def render_packages_deploy():
                         st.error(f"Registry output error trace:\n{push_res.stderr}")
 
     # ===================================================================
-    # TAB 2: AUTOMATED INTEGRATION TEST WORKSPACE (Your Exact Hello World Fix)
+    # TAB 2: AUTOMATED INTEGRATION TEST WORKSPACE (Smoke Test)
     # ===================================================================
     with tab2:
         st.markdown("Use this tab to run the baseline system integration verification smoke test.")
         test_mode = st.selectbox("Select Test Framework Engine:", ["Python-based Package (Recommended)", "Bash Shell-based Package"])
         
         if st.button("Run Hello World Integration Test", type="primary", disabled=(central_ip is None)):
+            brane_cli = get_brane_executable()
+            
             with st.status("🚀 Initializing Integration Smoke Test...", expanded=True) as status:
                 test_dir = "/tmp/hello-world-test"
                 if os.path.exists(test_dir):
@@ -143,7 +166,7 @@ def render_packages_deploy():
                     package_name = "bash_hello"
 
                 st.write("🏗️ Compiling test application container assets via Brane local builder...")
-                build_res = subprocess.run(["brane", "package", "build", "./container.yml"], cwd=test_dir, capture_output=True, text=True)
+                build_res = subprocess.run([brane_cli, "package", "build", "./container.yml"], cwd=test_dir, capture_output=True, text=True)
                 
                 if build_res.returncode != 0:
                     st.error(f"Compilation Failed:\n{build_res.stderr}")
@@ -151,10 +174,10 @@ def render_packages_deploy():
                     st.stop()
 
                 st.write("🔑 Synchronizing authentication profile with Central Hub...")
-                subprocess.run(["brane", "login", f"http://{central_ip}", "--username", "admin_tester"], capture_output=True, text=True)
+                subprocess.run([brane_cli, "login", f"http://{central_ip}", "--username", "admin_tester"], capture_output=True, text=True)
                 
                 st.write(f"📤 Transferring test binary footprint `{package_name}` to registry...")
-                subprocess.run(["brane", "package", "push", package_name], cwd=test_dir, capture_output=True, text=True)
+                subprocess.run([brane_cli, "package", "push", package_name], cwd=test_dir, capture_output=True, text=True)
 
                 workflow_file = os.path.join(test_dir, "workflow.bs")
                 with open(workflow_file, "w") as f:
@@ -165,7 +188,7 @@ def render_packages_deploy():
 
                 st.write("📝 Scheduling workflow test script assembly to active orchestration engine...")
                 run_res = subprocess.run(
-                    ["brane", "workflow", "run", "workflow.bs", "--remote", f"http://{central_ip}:50053"], 
+                    [brane_cli, "workflow", "run", "workflow.bs", "--remote", f"http://{central_ip}:50053"], 
                     cwd=test_dir, capture_output=True, text=True
                 )
 
