@@ -1,7 +1,85 @@
 ---
-# Dynamic routing—pulls the IP automatically from whatever is in hosts.ini
-brane_hub_api: "http://{{ groups['central_hub'][0] }}:30051"
+# group_vars/all.yml
 
-# Dynamically detects system names (linux/darwin) and architectures (x86_64/aarch64)
-branectl_url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}"
-brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/nightly/brane-{{ ansible_system | lower }}-{{ ansible_architecture }}"
+#############################
+# ── User & paths ────
+#############################
+brane_user_home: "/home/adam"          # ← only definition, hardcoded
+brane_image_tag: "3.0.0-nightly_fdbbd6c2" 
+brane_image_version: "3.0.0-nightly_fdbbd6c2"
+brane_worker_hostname: "{{ ansible_host }}"
+
+
+#Base GitHub release URL- worker-compose.yml 
+brane_worker_compose_url: >- "https://github.com/AdamBelloum/brane-deployment/tree/main/scripts/templates/worker-compose.yml"
+
+#ase GitHub release URL- central-compose.yml
+brane_central_compose_url: "https://github.com/AdamBelloum/brane-deployment/tree/main/scripts/templates/central-compose.yml"
+
+# Base GitHub release URL - Brane
+_brane_release_base: >- "https://github.com/BraneFramework/brane/releases/download/{{ brane_image_version }}"
+
+############################
+# Binary download URLs
+############################
+
+branectl_url: >-
+  https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}
+
+brane_cli_url: >-
+  https://github.com/BraneFramework/brane/releases/download/nightly/brane-{{ ansible_system | lower }}-{{ ansible_architecture }}
+
+############################
+# Local binary locations
+############################
+
+# Where branectl is installed (per-user, no sudo).
+branectl_local_bin: "{{ brane_user_home }}/.local/bin/branectl"
+
+# Where brane CLI is installed (per-user, no sudo).
+brane_cli_path: "{{ brane_user_home }}/.local/bin/brane"
+
+############################
+# Brane install directories
+############################
+
+brane_central_install_dir: "{{ brane_user_home }}/brane-central"
+brane_install_dir: "{{ brane_user_home }}/brane-central"
+brane_worker_install_dir:  "{{ brane_user_home }}/brane-worker"
+brane_proxy_install_dir:   "{{ brane_user_home }}/brane-proxy"
+
+
+############################
+# Certificate directories
+############################
+
+central_cert_dir: "{{ brane_central_install_dir }}/config/certs"
+worker_cert_dir: "{{ brane_worker_install_dir }}/config/certs"
+proxy_cert_dir: "{{ brane_proxy_install_dir }}/config/certs"
+
+cert_artifact_dir: "artifacts/certs"
+
+############################
+# Brane  / registry endpoints
+############################
+
+brane_hub_api: >-
+  http://{{ hostvars[groups['central'][0]].ansible_host }}:30051
+
+brane_registry_url: >-
+  http://{{ hostvars[groups['central'][0]].ansible_host }}:50051
+
+brane_driver_url: >-
+  http://{{ hostvars[groups['central'][0]].ansible_host }}:50053
+
+############################
+# Image / deployment defaults
+############################
+
+brane_image_version: "nightly"
+
+brane_policy_secrets:
+  - policy_deliberation_secret.json
+  - policy_expert_secret.json
+
+brane_full_cleanup: false
