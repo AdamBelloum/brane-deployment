@@ -1,0 +1,99 @@
+# Docker Compose template for configuring the central Brane node in our 3-node setup.
+
+# We use this instead of the default Brane startup flow so we can control
+# image names, host mapping, and ports explicitly on the VMs.
+
+x-common-hosts: &common-hosts
+  # Each container needs to resolve the other Brane nodes by the names used
+  # in the generated Brane config files.
+  extra_hosts:
+    - "brane-central.internal:${BRANE_CENTRAL_IP}"
+    - "worker-a.internal:${WORKER_A_IP}"
+    - "worker-b.internal:${WORKER_B_IP}"
+
+services:
+  # Scylla is the central node's database backend.
+  aux-scylla:
+    <<: *common-hosts
+    image: scylladb/scylla:4.6.3
+    # Keep resource usage down for the 2 GB VMs.
+    command: --smp 1
+    restart: always
+
+  # Kafka + Zookeeper provide the message bus used by Brane's central services.
+  aux-kafka:
+    <<: *common-hosts
+    image: ubuntu/kafka:3.1-22.04_beta
+    restart: always
+    environment:
+      ZOOKEEPER_HOST: aux-zookeeper
+      ZOOKEEPER_PORT: 2181
+
+  aux-zookeeper:
+    <<: *common-hosts
+    image: ubuntu/zookeeper:3.1-22.04_beta
+    restart: always
+
+  # Xenon is an auxiliary Brane service expected by the central stack.
+  brane-xenon:
+    <<: *common-hosts
+    image: aux-xenon:${BRANE_VERSION:-latest}
+    command: -v
+    restart: always
+
+  # PRX is the proxy/TLS entrypoint used for node-to-node communication.
+  brane-prx:
+    <<: *common-hosts
+    image: brane-prx:${BRANE_VERSION:-latest}
+    container_name: ${PRX_NAME}
+    restart: always
+    volumes:
+      - ${NODE_CONFIG_PATH}:/node.yml
+      - ${PROXY}:${PROXY}
+      - ${CERTS}:${CERTS}
+
+  # API is the user-facing control plane. We publish its port so local
+  # `brane` commands can talk to the central node from outside the VM.
+  brane-api:
+    <<: *common-hosts
+    image: brane-api:${BRANE_VERSION:-latest}
+    container_name: ${API_NAME}
+    restart: always
+    ports:
+      - "0.0.0.0:${API_PORT}:${API_PORT}"
+    volumes:
+      - ${NODE_CONFIG_PATH}:/node.yml
+      - ${INFRA}:${INFRA}
+      - ${CERTS}:${CERTS}
+      - ${PACKAGES}:${PACKAGES}
+    depends_on:
+      - aux-scylla
+      - brane-prx
+
+  # DRV coordinates workflow execution and talks to the workers.
+  brane-drv:
+    <<: *common-hosts
+    image: brane-drv:${BRANE_VERSION:-latest}
+    container_name: ${DRV_NAME}
+    restart: always
+    ports:
+      - "0.0.0.0:${DRV_PORT}:${DRV_PORT}"
+    volumes:
+      - ${NODE_CONFIG_PATH}:/node.yml
+      - ${INFRA}:${INFRA}
+    depends_on:
+      - aux-kafka
+      - brane-prx
+      - brane-api
+
+  # PLR is the policy reasoner used by the central node.
+  brane-plr:
+    <<: *common-hosts
+    image: brane-plr:${BRANE_VERSION:-latest}
+    container_name: ${PLR_NAME}
+    restart: always
+    volumes:
+      - ${NODE_CONFIG_PATH}:/node.yml
+      - ${INFRA}:${INFRA}
+    depends_on:
+      - aux-kafka

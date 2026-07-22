@@ -1,0 +1,60 @@
+# Docker Compose template for configuring a worker Brane node.
+
+x-common-hosts: &common-hosts
+  # The worker containers must resolve every cluster node by the exact names
+  # referenced in Brane's certificates and config files.
+  extra_hosts:
+    - "brane-central.internal:${BRANE_CENTRAL_IP}"
+    - "worker-a.internal:${WORKER_A_IP}"
+    - "worker-b.internal:${WORKER_B_IP}"
+
+services:
+  # PRX handles secure communication between this worker and the rest
+  # of the Brane cluster.
+  brane-prx:
+    <<: *common-hosts
+    image: brane-prx:${BRANE_VERSION:-latest}
+    container_name: ${PRX_NAME}
+    restart: always
+    volumes:
+      - ${NODE_CONFIG_PATH}:/node.yml
+      - ${PROXY}:${PROXY}
+      - ${CERTS}:${CERTS}
+
+  # REG is the worker's registry service. It exposes datasets/results that
+  # live on this node.
+  brane-reg:
+    <<: *common-hosts
+    image: brane-reg:${BRANE_VERSION:-latest}
+    container_name: ${REG_NAME}
+    restart: always
+    ports:
+      - "0.0.0.0:${REG_PORT}:${REG_PORT}"
+    volumes:
+      - ${NODE_CONFIG_PATH}:/node.yml
+      - ${BACKEND}:${BACKEND}
+      - ${POLICIES}:${POLICIES}
+      - ${CERTS}:${CERTS}
+      - ${DATA}:${DATA}
+      - ${RESULTS}:${RESULTS}
+
+  # JOB executes package containers for workflows scheduled onto this worker.
+  brane-job:
+    <<: *common-hosts
+    image: brane-job:${BRANE_VERSION:-latest}
+    container_name: ${JOB_NAME}
+    restart: always
+    ports:
+      - "0.0.0.0:${JOB_PORT}:${JOB_PORT}"
+    volumes:
+      - ${NODE_CONFIG_PATH}:/node.yml
+      - ${BACKEND}:${BACKEND}
+      - ${POLICIES}:${POLICIES}
+      - ${CERTS}:${CERTS}
+      - ${PACKAGES}:${PACKAGES}
+      - ${DATA}:${DATA}
+      - ${RESULTS}:${RESULTS}
+      - ${TEMP_DATA}:${TEMP_DATA}
+      - ${TEMP_RESULTS}:${TEMP_RESULTS}
+      # JOB launches package containers through the host Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
