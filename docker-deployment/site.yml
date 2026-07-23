@@ -1,0 +1,68 @@
+---
+# site.yml
+# Deploy Brane on UvA servers.
+# Order: prerequisites → brane_deployctl → workers → certs → central → start workers → start central
+
+- name: "Brane — prerequisites on all nodes"
+  hosts: all
+  become: true
+  gather_facts: true
+  tags: [prerequisites]
+  roles:
+    - role: brane_deploy
+      tags: [prerequisites]
+
+- name: "Brane — install brane_deployctl on all nodes"
+  hosts: all
+  become: false
+  gather_facts: true
+  tags: [brane_deployctl]
+  roles:
+    - role: brane_deploy
+      tags: [brane_deployctl]
+
+- name: "Brane — configure & prepare worker nodes"
+  hosts: workers
+  become: false
+  gather_facts: true
+  tags: [worker]
+  roles:
+    - role: brane_deploy
+      tags: [worker]
+
+- name: "Brane — configure & prepare central node"
+  hosts: central
+  become: false
+  gather_facts: true
+  tags: [central]
+  roles:
+    - role: brane_deploy
+      tags: [central]
+
+- name: "Brane — exchange certificates (all nodes)"
+  hosts: all
+  become: false
+  gather_facts: false
+  tags: [certs]
+  roles:
+    - role: brane_deploy
+      tags: [certs]
+
+- name: "Brane — start workers"
+  hosts: workers
+  become: false
+  gather_facts: false
+  tags: [start]
+  roles:
+    - role: brane_deploy
+      tags: [start]
+
+- name: "Brane — start central"
+  hosts: central
+  become: false
+  gather_facts: false
+  tags: [start]
+  roles:
+    - role: brane_deploy
+      tags: [start]
+

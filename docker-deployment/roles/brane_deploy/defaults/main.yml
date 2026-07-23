@@ -1,0 +1,60 @@
+---
+# roles/brane/defaults/main.yml
+# Defaults — all overridable via group_vars/all.yml or host_vars.
+
+############################
+# Brane version
+############################
+
+brane_image_tag: "3.0.0-nightly_fdbbd6c2"
+brane_image_version: "nightly"
+
+############################
+# Tarball names
+############################
+
+brane_worker_tarball: "worker-instance-x86_64.tar.gz"
+brane_central_tarball: "instance-x86_64.tar.gz"
+
+############################
+# Install directories
+############################
+
+brane_user_home: "/home/adam"
+brane_worker_install_dir: "{{ brane_user_home }}/brane-worker"
+brane_central_install_dir: "{{ brane_user_home }}/brane-central"
+
+############################
+# branectl binary
+############################
+
+branectl_local_bin: "{{ brane_user_home }}/.local/bin/branectl"
+
+############################
+# Certificate staging
+############################
+
+cert_artifact_dir: "artifacts/certs"
+
+############################
+# Central hostname
+############################
+
+# Central node hostname used in node config
+brane_central_internal_hostname: "brane-central.internal"
+
+############################
+# Compose file URLs
+# Override these in group_vars/all.yml with the correct raw Git URLs
+############################
+
+#Base GitHub release URL- worker-compose.yml
+brane_worker_compose_url: "https://raw.githubusercontent.com/PLACEHOLDER_ORG/PLACEHOLDER_REPO/PLACEHOLDER_BRANCH/scripts/templates/worker-compose.yml"
+
+#ase GitHub release URL- central-compose.yml
+brane_central_compose_url: "https://raw.githubusercontent.com/PLACEHOLDER_ORG/PLACEHOLDER_REPO/PLACEHOLDER_BRANCH/scripts/templates/central-compose.yml"
+
+# Base GitHub release URL - Brane
+brane_release_base: "https://github.com/BraneFramework/brane/releases/download/{{ brane_image_version }}"
+brane_release_base: "https://github.com/BraneFramework/brane/nightly/download/{{ brane_image_version }}"
+ 

@@ -1,0 +1,36 @@
+---
+# roles/brane_deploy/tasks/start.yml
+# Start Brane services. Workers must already be up before central is started
+# (enforced by play ordering in site.yml).
+
+- name: "Start | docker-compose up on worker node"
+  ansible.builtin.command:
+    cmd: >
+      docker-compose -p brane-worker-{{ location_id }} up -d
+    chdir: "{{ brane_worker_install_dir }}"
+  when: inventory_hostname in groups['workers']
+  changed_when: true
+  tags: [start]
+
+- name: "Start | docker-compose up on central node"
+  ansible.builtin.command:
+    cmd: >
+      docker-compose -p brane-central up -d
+    chdir: "{{ brane_central_install_dir }}"
+  when: inventory_hostname in groups['central']
+  changed_when: true
+  tags: [start]
+
+- name: "Start | Wait for central API to become healthy"
+  ansible.builtin.uri:
+    url: "http://{{ hostvars[groups['central'][0]].ansible_host }}:50051/health"
+    method: GET
+    status_code: 200
+    return_content: true
+  register: _health
+  until: _health.content is search("OK")
+  retries: 20
+  delay: 10
+  when: inventory_hostname in groups['central']
+  tags: [start]
+

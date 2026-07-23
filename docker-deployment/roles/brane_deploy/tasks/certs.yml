@@ -1,0 +1,114 @@
+---
+# roles/brane/tasks/certs.yml
+# Certificate exchange between central and workers.
+#
+# Final layout on central:
+#   config/certs/ca.pem                          ← central's own CA
+#   config/certs/<location_id>/ca.pem            ← worker CA (e.g. client-node-2)
+#   config/certs/<location_id>/client-id.pem     ← worker client cert
+#
+# Final layout on each worker:
+#   config/certs/ca.pem                          ← worker's own CA
+#   config/certs/central/ca.pem                  ← central CA
+#   client-certs/ca.pem                          ← copy of worker CA
+#   client-certs/client-id.pem                   ← worker client cert
+
+# ── 0. Ensure staging dirs exist on controller ────────────────────────────────
+
+- name: "Certs | Ensure central artifact dir exists on controller"
+  ansible.builtin.file:
+    path: "{{ cert_artifact_dir }}/central"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [certs]
+
+- name: "Certs | Ensure worker artifact dirs exist on controller"
+  ansible.builtin.file:
+    path: "{{ cert_artifact_dir }}/workers"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [certs]
+
+# ── 1. Fetch central CA to controller ─────────────────────────────────────────
+
+- name: "Certs | Fetch central CA to controller"
+  ansible.builtin.fetch:
+    src: "{{ brane_central_install_dir }}/config/certs/ca.pem"
+    dest: "{{ cert_artifact_dir }}/central/ca.pem"
+    flat: true
+  become: false
+  when: "'central' in group_names"
+  tags: [certs]
+
+# ── 2. Distribute central CA to workers ───────────────────────────────────────
+
+- name: "Certs | Ensure central CA dir exists on workers"
+  ansible.builtin.file:
+    path: "{{ brane_worker_install_dir }}/config/certs/{{ central_location_id | default('central') }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "0755"
+  become: false
+  when: "'workers' in group_names"
+  tags: [certs]
+
+- name: "Certs | Copy central CA to workers"
+  ansible.builtin.copy:
+    src: "{{ cert_artifact_dir }}/central/ca.pem"
+    dest: "{{ brane_worker_install_dir }}/config/certs/{{ central_location_id | default('central') }}/ca.pem"
+    owner: "{{ ansible_user }}"
+    mode: "0644"
+  become: false
+  when: "'workers' in group_names"
+  tags: [certs]
+
+# ── 3. Fetch worker CAs to controller ─────────────────────────────────────────
+
+- name: "Certs | Fetch worker CA to controller"
+  ansible.builtin.fetch:
+    src: "{{ brane_worker_install_dir }}/config/certs/ca.pem"
+    dest: "{{ cert_artifact_dir }}/workers/{{ inventory_hostname }}/ca.pem"
+    flat: true
+  become: false
+  when: "'workers' in group_names"
+  tags: [certs]
+
+- name: "Certs | Fetch worker client cert to controller"
+  ansible.builtin.fetch:
+    src: "{{ brane_worker_install_dir }}/client-certs/client-id.pem"
+    dest: "{{ cert_artifact_dir }}/workers/{{ inventory_hostname }}/client-id.pem"
+    flat: true
+  become: false
+  when: "'workers' in group_names"
+  tags: [certs]
+
+# ── 4. Copy worker CAs + client certs into central config/certs/<location_id>/ ─
+
+- name: "Certs | Copy worker CA to central config/certs/<location_id>/"
+  ansible.builtin.copy:
+    src: "{{ cert_artifact_dir }}/workers/{{ item }}/ca.pem"
+    dest: "{{ brane_central_install_dir }}/config/certs/{{ hostvars[item].location_id }}/ca.pem"
+    owner: "{{ ansible_user }}"
+    mode: "0644"
+  become: false
+  loop: "{{ groups['workers'] }}"
+  when: "'central' in group_names"
+  tags: [certs]
+
+- name: "Certs | Copy worker client cert to central config/certs/<location_id>/"
+  ansible.builtin.copy:
+    src: "{{ cert_artifact_dir }}/workers/{{ item }}/client-id.pem"
+    dest: "{{ brane_central_install_dir }}/config/certs/{{ hostvars[item].location_id }}/client-id.pem"
+    owner: "{{ ansible_user }}"
+    mode: "0644"
+  become: false
+  loop: "{{ groups['workers'] }}"
+  when: "'central' in group_names"
+  tags: [certs]
+

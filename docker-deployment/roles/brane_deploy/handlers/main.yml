@@ -1,0 +1,21 @@
+---
+# roles/brane/handlers/main.yml
+
+- name: "Restart Docker"
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+  become: true
+
+- name: "Restart worker compose"
+  ansible.builtin.command:
+    cmd: docker-compose -p brane-worker-{{ location_id }} restart
+    chdir: "{{ brane_worker_install_dir }}"
+  when: inventory_hostname in groups['workers']
+
+- name: "Restart central compose"
+  ansible.builtin.command:
+    cmd: docker-compose -p brane-central restart
+    chdir: "{{ brane_central_install_dir }}"
+  when: inventory_hostname in groups['central']
+

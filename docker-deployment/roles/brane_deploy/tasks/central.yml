@@ -1,0 +1,155 @@
+---
+# roles/brane/tasks/central.yml
+# Prepare the Brane central node: dirs, tarball, config, ACLs, images, compose, certs.
+
+# ── Directories ────────────────────────────────────────────────────────────────
+
+- name: "Central | Create base install directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "0755"
+  loop:
+    - "{{ brane_central_install_dir }}/config/certs"
+    - "{{ brane_central_install_dir }}/data"
+    - "{{ brane_central_install_dir }}/packages"
+    - "{{ brane_central_install_dir }}/results"
+    - "{{ brane_central_install_dir }}/target/release"
+  tags: [central]
+
+- name: "Central | Create per-worker cert dirs (from inventory)"
+  ansible.builtin.file:
+    path: "{{ brane_central_install_dir }}/config/certs/{{ hostvars[item].location_id }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "0755"
+  loop: "{{ groups['workers'] }}"
+  tags: [central]
+
+- name: "Central | Grant container UID 1000 access to install dir"
+  ansible.posix.acl:
+    path: "{{ brane_central_install_dir }}"
+    entity: "1000"
+    etype: user
+    permissions: rwx
+    state: present
+  tags: [central]
+
+- name: "Central | Set default ACL (inherit for new files/dirs)"
+  ansible.posix.acl:
+    path: "{{ brane_central_install_dir }}"
+    entity: "1000"
+    etype: user
+    permissions: rwx
+    default: true
+    state: present
+  tags: [central]
+
+# ── Tarball ────────────────────────────────────────────────────────────────────
+
+- name: "Central | Download central release tarball"
+  ansible.builtin.get_url:
+    url: "{{ _brane_release_base }}/{{ brane_central_tarball }}"
+    dest: "/tmp/{{ brane_central_tarball }}"
+    mode: "0644"
+  tags: [central]
+
+- name: "Central | Extract tarball into target/release"
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ brane_central_tarball }}"
+    dest: "{{ brane_central_install_dir }}/target/release"
+    remote_src: true
+    extra_opts: ["--strip-components=1"]
+  tags: [central]
+
+# ── Compose file ───────────────────────────────────────────────────────────────
+
+- name: "Central | Download central-compose.yml from Git repo"
+  ansible.builtin.get_url:
+    url: "{{ brane_central_compose_url }}"
+    dest: "{{ brane_central_install_dir }}/docker-compose.yml"
+    mode: "0644"
+    owner: "{{ ansible_user }}"
+    force: true
+  tags: [central]
+
+# ── Config generation ──────────────────────────────────────────────────────────
+
+- name: "Central | Generate proxy config"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate proxy
+      -f -p {{ brane_central_install_dir }}/config/proxy.yml
+    chdir: "{{ brane_central_install_dir }}"
+  changed_when: true
+  tags: [central]
+
+- name: "Central | Generate infra config (register all workers)"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate infra -f
+      -p {{ brane_central_install_dir }}/config/infra.yml
+      {% for w in groups['workers'] %}
+      {{ hostvars[w].location_id }}:{{ hostvars[w].brane_hostname }}
+      {% endfor %}
+    chdir: "{{ brane_central_install_dir }}"
+  changed_when: true
+  tags: [central]
+
+- name: "Central | Generate node config"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate node -f
+      -H {{ brane_central_internal_hostname }}:{{ ansible_host }}
+      {% for w in groups['workers'] %}
+      -H {{ hostvars[w].brane_hostname }}:{{ hostvars[w].ansible_host }}
+      {% endfor %}
+      central {{ brane_central_internal_hostname }}
+    chdir: "{{ brane_central_install_dir }}"
+  changed_when: true
+  tags: [central]
+
+# ── Certificate generation (central's own certs) ──────────────────────────────
+
+- name: "Central | Generate server certs"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate certs -f
+      -p {{ brane_central_install_dir }}/config/certs
+      server central
+      -H {{ ansible_host }}
+    chdir: "{{ brane_central_install_dir }}"
+  changed_when: true
+  tags: [central]
+
+# ── Docker images ──────────────────────────────────────────────────────────────
+
+- name: "Central | Load Docker images"
+  ansible.builtin.command:
+    cmd: "docker load -i {{ brane_central_install_dir }}/target/release/{{ item }}"
+  loop:
+    - aux-kafka.tar
+    - aux-scylla.tar
+    - aux-zookeeper.tar
+    - brane-api.tar
+    - brane-drv.tar
+    - brane-plr.tar
+    - brane-prx.tar
+  changed_when: true
+  tags: [central]
+
+- name: "Central | Tag Docker images"
+  ansible.builtin.command:
+    cmd: "docker tag {{ item }}:latest {{ item }}:{{ brane_image_tag }}"
+  loop:
+    - aux-kafka
+    - aux-scylla
+    - aux-zookeeper
+    - brane-api
+    - brane-drv
+    - brane-plr
+    - brane-prx
+  changed_when: true
+  tags: [central]
+

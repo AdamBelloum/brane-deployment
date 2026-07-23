@@ -1,0 +1,44 @@
+---
+# roles/brane/tasks/smoke_test.yml
+# Run on: central node only.
+# Expects the smoke test script to be present in the extracted tarball at
+# scripts/run-smoke-test.sh, and expects output "pong-from-worker" twice.
+
+- name: "Smoke test | Check smoke test script exists"
+  ansible.builtin.stat:
+    path: "{{ brane_central_install_dir }}/target/release/scripts/run-smoke-test.sh"
+  register: _smoke_script
+  tags: [smoke]
+
+- name: "Smoke test | Fail if smoke test script is missing"
+  ansible.builtin.fail:
+    msg: >
+      Smoke test script not found at
+      {{ brane_central_install_dir }}/target/release/scripts/run-smoke-test.sh.
+      Check that the central tarball was extracted correctly.
+  when: not _smoke_script.stat.exists
+  tags: [smoke]
+
+- name: "Smoke test | Run smoke test"
+  ansible.builtin.command:
+    cmd: bash scripts/run-smoke-test.sh
+    chdir: "{{ brane_central_install_dir }}/target/release"
+  register: _smoke_result
+  changed_when: false
+  tags: [smoke]
+
+- name: "Smoke test | Show output"
+  ansible.builtin.debug:
+    msg: "{{ _smoke_result.stdout_lines }}"
+  tags: [smoke]
+
+- name: "Smoke test | Assert pong-from-worker received twice"
+  ansible.builtin.assert:
+    that:
+      - "(_smoke_result.stdout | regex_findall('pong-from-worker') | length) == 2"
+    fail_msg: >
+      Smoke test failed. Expected 'pong-from-worker' twice.
+      Got: {{ _smoke_result.stdout }}
+    success_msg: "Smoke test passed — pong-from-worker received twice."
+  tags: [smoke]
+

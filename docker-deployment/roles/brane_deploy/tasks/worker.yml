@@ -1,0 +1,164 @@
+---
+# roles/brane/tasks/worker.yml
+# Prepare a Brane worker node: dirs, tarball, config, ACLs, images, compose, certs.
+
+# ── Directories ────────────────────────────────────────────────────────────────
+
+- name: "Worker | Create install directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "0755"
+  loop:
+    - "{{ brane_worker_install_dir }}/target/release"
+    - "{{ brane_worker_install_dir }}/config/certs"
+    - "{{ brane_worker_install_dir }}/client-certs"
+  tags: [worker]
+
+- name: "Worker | Grant container UID 1000 access to install dir"
+  ansible.posix.acl:
+    path: "{{ brane_worker_install_dir }}"
+    entity: "1000"
+    etype: user
+    permissions: rwx
+    state: present
+  tags: [worker]
+
+- name: "Worker | Set default ACL (inherit for new files/dirs)"
+  ansible.posix.acl:
+    path: "{{ brane_worker_install_dir }}"
+    entity: "1000"
+    etype: user
+    permissions: rwx
+    default: true
+    state: present
+  tags: [worker]
+
+# ── Tarball ────────────────────────────────────────────────────────────────────
+
+- name: "Worker | Download worker release tarball"
+  ansible.builtin.get_url:
+    url: "{{ _brane_release_base }}/{{ brane_worker_tarball }}"
+    dest: "/tmp/{{ brane_worker_tarball }}"
+    mode: "0644"
+  tags: [worker]
+
+- name: "Worker | Extract tarball into target/release"
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ brane_worker_tarball }}"
+    dest: "{{ brane_worker_install_dir }}/target/release"
+    remote_src: true
+    extra_opts: ["--strip-components=1"]
+  tags: [worker]
+
+# ── Compose file ───────────────────────────────────────────────────────────────
+
+- name: "Worker | Download worker-compose.yml from Git repo"
+  ansible.builtin.get_url:
+    url: "{{ brane_worker_compose_url }}"
+    dest: "{{ brane_worker_install_dir }}/docker-compose.yml"
+    mode: "0644"
+    owner: "{{ ansible_user }}"
+    force: true
+  tags: [worker]
+
+# ── Config generation ──────────────────────────────────────────────────────────
+
+- name: "Worker | Generate backend config"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate backend
+      -f -p {{ brane_worker_install_dir }}/config/backend.yml local
+    chdir: "{{ brane_worker_install_dir }}"
+  changed_when: true
+  tags: [worker]
+
+- name: "Worker | Generate proxy config"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate proxy
+      -f -p {{ brane_worker_install_dir }}/config/proxy.yml
+    chdir: "{{ brane_worker_install_dir }}"
+  changed_when: true
+  tags: [worker]
+
+- name: "Worker | Generate policy config"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate policy
+      -f -a -p {{ brane_worker_install_dir }}/config/policies.yml
+    chdir: "{{ brane_worker_install_dir }}"
+  changed_when: true
+  tags: [worker]
+
+- name: "Worker | Generate node config"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate node -f
+      -H {{ brane_central_internal_hostname }}:{{ hostvars[groups['central'][0]].ansible_host }}
+      {% for w in groups['workers'] %}
+      -H {{ hostvars[w].brane_hostname }}:{{ hostvars[w].ansible_host }}
+      {% endfor %}
+      worker {{ brane_hostname }} {{ location_id }}
+    chdir: "{{ brane_worker_install_dir }}"
+  changed_when: true
+  tags: [worker]
+
+# ── Certificate generation (local to each worker) ─────────────────────────────
+
+- name: "Worker | Generate server certs"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate certs -f
+      -p {{ brane_worker_install_dir }}/config/certs
+      server {{ location_id }}
+      -H {{ brane_hostname }}
+    chdir: "{{ brane_worker_install_dir }}"
+  changed_when: true
+  tags: [worker]
+
+- name: "Worker | Copy CA cert into client-certs/"
+  ansible.builtin.copy:
+    src: "{{ brane_worker_install_dir }}/config/certs/ca.pem"
+    dest: "{{ brane_worker_install_dir }}/client-certs/ca.pem"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    mode: "0640"
+  tags: [worker]
+
+- name: "Worker | Generate client certs (signed by this worker's CA)"
+  ansible.builtin.command:
+    cmd: >
+      {{ branectl_local_bin }} generate certs -f
+      -p {{ brane_worker_install_dir }}/client-certs
+      client
+      -c {{ brane_worker_install_dir }}/config/certs/ca.pem
+      -k {{ brane_worker_install_dir }}/config/certs/ca-key.pem
+      client-id -H client-id
+    chdir: "{{ brane_worker_install_dir }}"
+  changed_when: true
+  tags: [worker]
+
+# ── Docker images ──────────────────────────────────────────────────────────────
+
+- name: "Worker | Load Docker images"
+  ansible.builtin.command:
+    cmd: "docker load -i {{ brane_worker_install_dir }}/target/release/{{ item.file }}"
+  loop:
+    - { file: "brane-prx.tar", image: "brane-prx" }
+    - { file: "brane-reg.tar", image: "brane-reg" }
+    - { file: "brane-job.tar", image: "brane-job" }
+  changed_when: true
+  tags: [worker]
+
+- name: "Worker | Tag Docker images"
+  ansible.builtin.command:
+    cmd: "docker tag {{ item }}:latest {{ item }}:{{ brane_image_tag }}"
+  loop:
+    - brane-prx
+    - brane-reg
+    - brane-job
+  changed_when: true
+  tags: [worker]
+
