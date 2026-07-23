@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+#3rd party tools - used frontend/
+frontend/eflint
+frontend/
+policy-reasoner-gui
+
+# user local datasets, packages  and NOTES -used in frontend/
+datasets/
+packages/
+NOTES
+
+#domain certificates
+certs/
+
+# Streamlit operational configurations
+.streamlit/
+
+# Brane local temporary cache workspaces
+workflow_codes/
+policies/
+/tmp/brane-*
+/tmp/hello-world-test/
+
+# Secure certificates and secrets (Crucial for infrastructure safety)
+*.pem
+*.key
+*.crt
+*.json
+docker-deployment/inventories/production/hosts.ini
+!docker-deployment/inventories/production/hosts.ini.template
+
+# OS files
+.DS_Store
+Thumbs.db
