@@ -1,0 +1,6 @@
+import brane_smoke_test;
+
+on "worker-b" {
+    let result := ping();
+    println(result);
+}

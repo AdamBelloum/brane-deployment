@@ -1,0 +1,18 @@
+name: brane_smoke_test
+version: 1.0.0
+kind: ecu
+
+files:
+  - smoke_test.sh
+
+entrypoint:
+  kind: task
+  exec: smoke_test.sh
+
+actions:
+  ping:
+    command:
+    input:
+    output:
+      - name: output
+        type: string
