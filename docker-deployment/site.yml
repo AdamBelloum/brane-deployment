@@ -65,3 +65,14 @@
       include_role:
         name: brane_deploy
         tasks_from: start
+
+- name: "Brane — smoke test"
+  hosts: central
+  become: false
+  gather_facts: false
+  tags: [smoke]
+  tasks:
+    - name: "Include smoke test tasks"
+      include_role:
+        name: brane_deploy
+        tasks_from: smoke_test
