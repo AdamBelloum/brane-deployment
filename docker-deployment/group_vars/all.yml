@@ -11,23 +11,32 @@ brane_worker_hostname: "{{ ansible_host }}"
 
 
 #Base GitHub release URL- worker-compose.yml 
-brane_worker_compose_url: >- "https://github.com/AdamBelloum/brane-deployment/tree/main/scripts/templates/worker-compose.yml"
+brane_worker_compose_url: "https://raw.githubusercontent.com/AdamBelloum/brane-deployment/refs/heads/main/scripts/templates/worker-compose.yml"
 
-#ase GitHub release URL- central-compose.yml
-brane_central_compose_url: "https://github.com/AdamBelloum/brane-deployment/tree/main/scripts/templates/central-compose.yml"
+#Base GitHub release URL- central-compose.yml
+brane_central_compose_url: "https://raw.githubusercontent.com/AdamBelloum/brane-deployment/refs/heads/main/scripts/templates/central-compose.yml"
 
 # Base GitHub release URL - Brane
-_brane_release_base: >- "https://github.com/BraneFramework/brane/releases/download/{{ brane_image_version }}"
+#_brane_release_base: >- 
+#  https://github.com/BraneFramework/brane/releases/download/nightly/{{ brane_image_version }}
 
+_brane_release_base: "https://github.com/BraneFramework/brane/releases/download/nightly"
 ############################
 # Binary download URLs
 ############################
 
-branectl_url: >-
-  https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}
 
-brane_cli_url: >-
-  https://github.com/BraneFramework/brane/releases/download/nightly/brane-{{ ansible_system | lower }}-{{ ansible_architecture }}
+############################
+# Binary download URLs
+############################
+branectl_url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-linux-x86_64"
+brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/nightly/brane-linux-x86_64"
+
+  #branectl_url: >-
+  #https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}
+
+  #brane_cli_url: >-
+  #https://github.com/BraneFramework/brane/releases/download/nightly/brane-{{ ansible_system | lower }}-{{ ansible_architecture }}
 
 ############################
 # Local binary locations
@@ -76,7 +85,7 @@ brane_driver_url: >-
 # Image / deployment defaults
 ############################
 
-brane_image_version: "nightly"
+#brane_image_version: "nightly"
 
 brane_policy_secrets:
   - policy_deliberation_secret.json

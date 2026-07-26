@@ -15,14 +15,15 @@ NC='\033[0m'
 # ==========================================
 
 export PATH="$HOME/.local/bin:$PATH"
+export BRANE_DEPLOY_HOME="/Users/adamBelloum1/Documents/brane-deployment/docker-deployment/"
 
 # ── Ansible role (new) ───────────────────
-ANSIBLE_INVENTORY="inventory/hosts.ini"
-ANSIBLE_PLAYBOOK="site.yml"
+ANSIBLE_INVENTORY="$BRANE_DEPLOY_HOME/inventories/production/hosts.ini"
+ANSIBLE_PLAYBOOK="$BRANE_DEPLOY_HOME/site.yml"
 ALL_TAGS="prerequisites,branectl,worker,central,certs,start,smoke"
 
 # ── Brane CLI settings ───────────────────
-PACKAGE_DIR="./packages"
+PACKAGE_DIR="$BRANE_DEPLOY_HOME/frontent/packages"
 PACKAGE_NAME="hello_world"
 WORKFLOW_NAME="hello_world.bs"
 CONTAINER_YML="container.yml"
@@ -67,6 +68,7 @@ while true; do
     echo "===================================================="
     echo ""
     echo "  ── Ansible Deployment ──────────────────────────"
+    echo "  ──  order to run manually prerequisites → branectl → worker → central → certs → start → smoke ── "
     echo "  1)  Full deployment (all tags)"
     echo "  2)  Prerequisites only"
     echo "  3)  Install branectl only"

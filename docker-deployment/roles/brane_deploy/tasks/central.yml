@@ -1,14 +1,16 @@
 ---
-# roles/brane/tasks/central.yml
+# roles/brane_deploy/tasks/central.yml
 # Prepare the Brane central node: dirs, tarball, config, ACLs, images, compose, certs.
+# NOTE: cert exchange (worker CA → central, central CA → workers) is handled by certs.yml
 
 # ── Directories ────────────────────────────────────────────────────────────────
-
 - name: "Central | Create base install directories"
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    recurse: true
     mode: "0755"
   loop:
     - "{{ brane_central_install_dir }}/config/certs"
@@ -16,6 +18,7 @@
     - "{{ brane_central_install_dir }}/packages"
     - "{{ brane_central_install_dir }}/results"
     - "{{ brane_central_install_dir }}/target/release"
+  become: false
   tags: [central]
 
 - name: "Central | Create per-worker cert dirs (from inventory)"
@@ -23,8 +26,11 @@
     path: "{{ brane_central_install_dir }}/config/certs/{{ hostvars[item].location_id }}"
     state: directory
     owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    recurse: true
     mode: "0755"
   loop: "{{ groups['workers'] }}"
+  become: false
   tags: [central]
 
 - name: "Central | Grant container UID 1000 access to install dir"
@@ -34,6 +40,7 @@
     etype: user
     permissions: rwx
     state: present
+  become: false
   tags: [central]
 
 - name: "Central | Set default ACL (inherit for new files/dirs)"
@@ -44,15 +51,16 @@
     permissions: rwx
     default: true
     state: present
+  become: false
   tags: [central]
 
 # ── Tarball ────────────────────────────────────────────────────────────────────
-
 - name: "Central | Download central release tarball"
   ansible.builtin.get_url:
     url: "{{ _brane_release_base }}/{{ brane_central_tarball }}"
     dest: "/tmp/{{ brane_central_tarball }}"
     mode: "0644"
+  become: false
   tags: [central]
 
 - name: "Central | Extract tarball into target/release"
@@ -61,10 +69,10 @@
     dest: "{{ brane_central_install_dir }}/target/release"
     remote_src: true
     extra_opts: ["--strip-components=1"]
+  become: false
   tags: [central]
 
 # ── Compose file ───────────────────────────────────────────────────────────────
-
 - name: "Central | Download central-compose.yml from Git repo"
   ansible.builtin.get_url:
     url: "{{ brane_central_compose_url }}"
@@ -72,10 +80,37 @@
     mode: "0644"
     owner: "{{ ansible_user }}"
     force: true
+  become: false
+  tags: [central]
+
+# ── .env for docker-compose ────────────────────────────────────────────────────
+- name: "Central | Write .env for docker-compose"
+  ansible.builtin.copy:
+    dest: "{{ brane_central_install_dir }}/.env"
+    owner: "{{ ansible_user }}"
+    mode: "0640"
+    content: |
+      DRV_NAME={{ brane_drv_name }}
+      DRV_PORT={{ brane_drv_port }}
+      PRX_NAME={{ brane_prx_name }}
+      API_NAME={{ brane_api_name }}
+      API_PORT={{ brane_api_port }}
+      PLR_NAME={{ brane_plr_name }}
+      BRANE_VERSION={{ brane_image_tag }}
+      NODE_CONFIG_PATH={{ brane_central_install_dir }}/node.yml
+      INFRA={{ brane_central_install_dir }}/config/infra.yml
+      PROXY={{ brane_central_install_dir }}/config/proxy.yml
+      CERTS={{ brane_central_install_dir }}/config/certs
+      DATA={{ brane_central_install_dir }}/data
+      PACKAGES={{ brane_central_install_dir }}/packages
+      RESULTS={{ brane_central_install_dir }}/results
+      BRANE_CENTRAL_IP={{ ansible_host }}
+      WORKER_A_IP={{ hostvars[groups['workers'][0]]['ansible_host'] }}
+      WORKER_B_IP={{ hostvars[groups['workers'][1]]['ansible_host'] }}
+  become: false
   tags: [central]
 
 # ── Config generation ──────────────────────────────────────────────────────────
-
 - name: "Central | Generate proxy config"
   ansible.builtin.command:
     cmd: >
@@ -83,6 +118,7 @@
       -f -p {{ brane_central_install_dir }}/config/proxy.yml
     chdir: "{{ brane_central_install_dir }}"
   changed_when: true
+  become: false
   tags: [central]
 
 - name: "Central | Generate infra config (register all workers)"
@@ -95,6 +131,7 @@
       {% endfor %}
     chdir: "{{ brane_central_install_dir }}"
   changed_when: true
+  become: false
   tags: [central]
 
 - name: "Central | Generate node config"
@@ -108,6 +145,7 @@
       central {{ brane_central_internal_hostname }}
     chdir: "{{ brane_central_install_dir }}"
   changed_when: true
+  become: false
   tags: [central]
 
 # ── Certificate generation (central's own certs) ──────────────────────────────
@@ -121,35 +159,24 @@
       -H {{ ansible_host }}
     chdir: "{{ brane_central_install_dir }}"
   changed_when: true
+  become: false
   tags: [central]
 
 # ── Docker images ──────────────────────────────────────────────────────────────
 
-- name: "Central | Load Docker images"
-  ansible.builtin.command:
-    cmd: "docker load -i {{ brane_central_install_dir }}/target/release/{{ item }}"
+- name: "Central | Load and tag Docker images"
+  ansible.builtin.shell: |
+    SHA=$(docker load -i {{ brane_central_install_dir }}/target/release/{{ item.tar }} | awk '{print $NF}')
+    docker tag $SHA {{ item.image }}:{{ brane_image_tag }}
   loop:
-    - aux-kafka.tar
-    - aux-scylla.tar
-    - aux-zookeeper.tar
-    - brane-api.tar
-    - brane-drv.tar
-    - brane-plr.tar
-    - brane-prx.tar
+    #- { tar: "aux-kafka.tar",      image: "aux-kafka" }
+    #- { tar: "aux-scylla.tar",     image: "aux-scylla" }
+    #- { tar: "aux-zookeeper.tar",  image: "aux-zookeeper" }
+    - { tar: "brane-api.tar",      image: "brane-api" }
+    - { tar: "brane-drv.tar",      image: "brane-drv" }
+    - { tar: "brane-plr.tar",      image: "brane-plr" }
+    - { tar: "brane-prx.tar",      image: "brane-prx" }
   changed_when: true
-  tags: [central]
-
-- name: "Central | Tag Docker images"
-  ansible.builtin.command:
-    cmd: "docker tag {{ item }}:latest {{ item }}:{{ brane_image_tag }}"
-  loop:
-    - aux-kafka
-    - aux-scylla
-    - aux-zookeeper
-    - brane-api
-    - brane-drv
-    - brane-plr
-    - brane-prx
-  changed_when: true
+  become: false
   tags: [central]
 

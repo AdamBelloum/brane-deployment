@@ -1,68 +1,67 @@
----
-# site.yml
-# Deploy Brane on UvA servers.
-# Order: prerequisites → brane_deployctl → workers → certs → central → start workers → start central
+---  # site.yml
 
 - name: "Brane — prerequisites on all nodes"
   hosts: all
   become: true
   gather_facts: true
   tags: [prerequisites]
-  roles:
-    - role: brane_deploy
-      tags: [prerequisites]
+  tasks:
+    - name: "Include prerequisites tasks"
+      include_role:
+        name: brane_deploy
+        tasks_from: prerequisites
 
-- name: "Brane — install brane_deployctl on all nodes"
+- name: "Brane — install branectl on all nodes"
   hosts: all
   become: false
   gather_facts: true
-  tags: [brane_deployctl]
-  roles:
-    - role: brane_deploy
-      tags: [brane_deployctl]
+  tags: [branectl]
+  tasks:
+    - name: "Include branectl tasks"
+      include_role:
+        name: brane_deploy
+        tasks_from: branectl
 
 - name: "Brane — configure & prepare worker nodes"
   hosts: workers
   become: false
   gather_facts: true
-  tags: [worker]
-  roles:
-    - role: brane_deploy
-      tags: [worker]
+  tags: [workers]
+  tasks:
+    - name: "Include worker tasks"
+      include_role:
+        name: brane_deploy
+        tasks_from: worker
 
 - name: "Brane — configure & prepare central node"
   hosts: central
   become: false
   gather_facts: true
   tags: [central]
-  roles:
-    - role: brane_deploy
-      tags: [central]
+  tasks:
+    - name: "Include central tasks"
+      include_role:
+        name: brane_deploy
+        tasks_from: central
 
-- name: "Brane — exchange certificates (all nodes)"
+- name: "Brane — exchange certificates"
   hosts: all
   become: false
   gather_facts: false
   tags: [certs]
-  roles:
-    - role: brane_deploy
-      tags: [certs]
+  tasks:
+    - name: "Include certs tasks"
+      include_role:
+        name: brane_deploy
+        tasks_from: certs
 
-- name: "Brane — start workers"
-  hosts: workers
+- name: "Brane — start Brane (workers + central)"
+  hosts: all
   become: false
   gather_facts: false
   tags: [start]
-  roles:
-    - role: brane_deploy
-      tags: [start]
-
-- name: "Brane — start central"
-  hosts: central
-  become: false
-  gather_facts: false
-  tags: [start]
-  roles:
-    - role: brane_deploy
-      tags: [start]
-
+  tasks:
+    - name: "Include start tasks"
+      include_role:
+        name: brane_deploy
+        tasks_from: start

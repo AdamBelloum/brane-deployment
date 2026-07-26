@@ -2,6 +2,7 @@
 # roles/brane/tasks/branectl.yml
 # Download and install the branectl binary (per-user, no sudo).
 
+# something 1
 - name: "branectl | Download binary"
   ansible.builtin.get_url:
     url: "{{ branectl_url }}"
@@ -10,6 +11,7 @@
     owner: "{{ ansible_user }}"
   tags: [branectl]
 
+# something 1
 - name: "branectl | Verify binary runs"
   ansible.builtin.command:
     cmd: "{{ branectl_local_bin }} version"
@@ -18,8 +20,8 @@
   failed_when: _branectl_version.rc != 0
   tags: [branectl]
 
+# something 1
 - name: "branectl | Show version"
   ansible.builtin.debug:
     msg: "branectl version: {{ _branectl_version.stdout }}"
   tags: [branectl]
-

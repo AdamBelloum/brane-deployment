@@ -14,7 +14,7 @@ brane_image_version: "nightly"
 ############################
 
 brane_worker_tarball: "worker-instance-x86_64.tar.gz"
-brane_central_tarball: "instance-x86_64.tar.gz"
+brane_central_tarball: "central-instance-x86_64.tar.gz"
 
 ############################
 # Install directories
@@ -48,13 +48,17 @@ brane_central_internal_hostname: "brane-central.internal"
 # Override these in group_vars/all.yml with the correct raw Git URLs
 ############################
 
-#Base GitHub release URL- worker-compose.yml
-brane_worker_compose_url: "https://raw.githubusercontent.com/PLACEHOLDER_ORG/PLACEHOLDER_REPO/PLACEHOLDER_BRANCH/scripts/templates/worker-compose.yml"
-
-#ase GitHub release URL- central-compose.yml
-brane_central_compose_url: "https://raw.githubusercontent.com/PLACEHOLDER_ORG/PLACEHOLDER_REPO/PLACEHOLDER_BRANCH/scripts/templates/central-compose.yml"
+############################
+# Central service names & ports
+############################
+brane_drv_name: "brane-drv"
+brane_drv_port: 50052
+brane_prx_name: "brane-prx"
+brane_api_name: "brane-api"
+brane_api_port: 50051
+brane_plr_name: "brane-plr"
 
 # Base GitHub release URL - Brane
-brane_release_base: "https://github.com/BraneFramework/brane/releases/download/{{ brane_image_version }}"
-brane_release_base: "https://github.com/BraneFramework/brane/nightly/download/{{ brane_image_version }}"
+#brane_release_base: "https://github.com/BraneFramework/brane/releases/download/{{ brane_image_version }}"
+#brane_release_base: "https://github.com/BraneFramework/brane/nightly/download/{{ brane_image_version }}"
  

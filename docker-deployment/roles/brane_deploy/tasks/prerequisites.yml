@@ -1,7 +1,6 @@
 ---
-# roles/brane/tasks/prerequisites.yml
+# roles/brane_deploy/tasks/prerequisites.yml
 # Install Docker, dependencies, and libssl1.1 on all nodes.
-# Requires become: true (set at play level in site.yml).
 
 - name: "Prerequisites | Remove conflicting upstream Docker plugin packages"
   ansible.builtin.apt:
@@ -10,11 +9,13 @@
       - docker-compose-plugin
     state: absent
   ignore_errors: true
+  become: true
   tags: [prerequisites]
 
 - name: "Prerequisites | Fix any broken apt state"
   ansible.builtin.command: apt-get -f install -y
   changed_when: false
+  become: true
   tags: [prerequisites]
 
 - name: "Prerequisites | Install required packages"
@@ -29,6 +30,7 @@
       - acl                  # required for ansible.posix.acl module
     state: present
     update_cache: true
+  become: true
   tags: [prerequisites]
 
 - name: "Prerequisites | Enable and start Docker"
@@ -36,6 +38,7 @@
     name: docker
     enabled: true
     state: started
+  become: true
   tags: [prerequisites]
 
 - name: "Prerequisites | Add {{ ansible_user }} to docker group"
@@ -43,6 +46,7 @@
     name: "{{ ansible_user }}"
     groups: docker
     append: true
+  become: true
   tags: [prerequisites]
 
 - name: "Prerequisites | Add Bullseye repo for libssl1.1 (Debian 13 workaround)"
@@ -50,11 +54,13 @@
     dest: /etc/apt/sources.list.d/bullseye-libssl.list
     content: "deb http://deb.debian.org/debian bullseye main\n"
     mode: "0644"
+  become: true
   tags: [prerequisites]
 
 - name: "Prerequisites | Update apt cache after adding Bullseye repo"
   ansible.builtin.apt:
     update_cache: true
+  become: true
   tags: [prerequisites]
 
 - name: "Prerequisites | Install libssl1.1 from Bullseye"
@@ -62,18 +68,23 @@
     name: libssl1.1
     state: present
     default_release: bullseye
+  become: true
   tags: [prerequisites]
 
 - name: "Prerequisites | Remove Bullseye repo after libssl1.1 install"
   ansible.builtin.file:
     path: /etc/apt/sources.list.d/bullseye-libssl.list
     state: absent
+  become: true
   tags: [prerequisites]
 
 - name: "Prerequisites | Refresh apt cache after removing Bullseye repo"
   ansible.builtin.apt:
     update_cache: true
+  become: true
   tags: [prerequisites]
+
+# These can stay non-root (operate in /home/adam):
 
 - name: "Prerequisites | Ensure ~/.local/bin exists for {{ ansible_user }}"
   ansible.builtin.file:
