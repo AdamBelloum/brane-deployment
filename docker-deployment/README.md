@@ -87,14 +87,14 @@ branectl_url: "[https://github.com/braneframework/brane/releases/latest/download
 - Run the master playbook from the repository root directory. Ensure that you have configure SSH public key authentication to the target VMs.
 
 ```Bash
-ansible-playbook -i inventories/production/hosts.ini deploy_docker.yml
+ansible -i inventories/production/hosts.ini deploy_docker.yml
 ```
 
 ## Concrete Example of What to Collect
 If a developer writes a Python function to clean data, they must hand over a folder structured exactly like this:
 
 ```Plaintext
-package_name//                <-- The package directory
+package_name/                <-- The package directory
 ├── brane-function-code.py    <-- The source code asset
 └── container.yml             <-- The mandatory interface blueprint
 ```
