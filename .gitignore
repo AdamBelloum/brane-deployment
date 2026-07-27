@@ -7,6 +7,11 @@ venv/
 env/
 .env
 
+#local files
+NOTES
+*.old
+*.bak
+
 # Streamlit operational configurations
 .streamlit/
 
