@@ -79,8 +79,10 @@ Ensure the remote system deployment user and version tags line up with your base
 ---
 ansible_user: ubuntu
 branectl_url: "[https://github.com/braneframework/brane/releases/latest/download/branectl-linux-x86_64](https://github.com/braneframework/brane/releases/latest/download/branectl-linux-x86_64)"
+# for Testing we are using the following branectl and brane cli 
+branectl_url: "[https://github.com/BraneFramework/brane/releases/download/test/branectl-linux-x86_64](https://github.com/BraneFramework/brane/releases/download/test/branectl-linux-x86_64)
+brane_cli_url: "[https://github.com/BraneFramework/brane/releases/download/test/branectl-linux-x86_64](https://github.com/BraneFramework/brane/releases/download/test/branectl-linux-x86_64)"
 ```
-
 ## Execution Guide
 
 - Provision and Bootstrap Cluster
@@ -88,6 +90,11 @@ branectl_url: "[https://github.com/braneframework/brane/releases/latest/download
 
 ```Bash
 ansible -i inventories/production/hosts.ini deploy_docker.yml
+```
+or using tags for a step by step deployment 
+
+```Bash
+ansible -i inventories/production/hosts.ini deploy_docker.yml --tags prerequisites | branectl | workers | central | certs | start
 ```
 
 ## Concrete Example of What to Collect
