@@ -18,6 +18,7 @@
     - "{{ brane_central_install_dir }}/packages"
     - "{{ brane_central_install_dir }}/results"
     - "{{ brane_central_install_dir }}/target/release"
+    - "{{ brane_central_install_dir }}/target/release/smoke-test/smoke-test-package"
   become: false
   tags: [central]
 
@@ -180,3 +181,30 @@
   become: false
   tags: [central]
 
+# ── smoke test  ──────────────────────────────────────────────────────────────
+- name: Install Brane smoke test on central
+  block:
+    - name: Ensure smoke test directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ smoke_test_dest }}"
+        - "{{ smoke_test_dest }}/smoke-test-package"
+
+    - name: Download run-smoke-test.sh
+      ansible.builtin.get_url:
+        url: "{{ smoke_test_base_url }}/run-smoke-test.sh"
+        dest: "{{ smoke_test_dest }}/run-smoke-test.sh"
+        mode: '0755'
+
+    - name: Download smoke-test-package files
+      ansible.builtin.get_url:
+        url: "{{ smoke_test_base_url }}/smoke-test-package/{{ item }}"
+        dest: "{{ smoke_test_dest }}/smoke-test-package/{{ item }}"
+        mode: '0644'
+      loop:
+        - worker-a.bs
+        - worker-b.bs
+        # add any other files in smoke-test-package/ here

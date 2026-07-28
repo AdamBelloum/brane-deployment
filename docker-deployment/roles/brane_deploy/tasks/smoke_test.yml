@@ -6,7 +6,7 @@
 
 - name: "Smoke test | Check smoke test script exists"
   ansible.builtin.stat:
-    path: "{{ brane_central_install_dir }}/target/release/scripts/run-smoke-test.sh"
+    path: "{{ brane_central_install_dir }}/target/release/scripts/smoke-test/run-smoke-test.sh"
   register: _smoke_script
   tags: [smoke]
 
@@ -21,8 +21,8 @@
 
 - name: "Smoke test | Run smoke test"
   ansible.builtin.command:
-    cmd: bash scripts/run-smoke-test.sh
-    chdir: "{{ brane_central_install_dir }}/target/release"
+    cmd: bash scripts/smoke-test/run-smoke-test.sh
+    chdir: "{{ brane_central_install_dir }}/target/release/"
   register: _smoke_result
   changed_when: false
   tags: [smoke]

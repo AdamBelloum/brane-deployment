@@ -9,6 +9,9 @@ brane_image_tag: "3.0.0-nightly_fdbbd6c2"
 brane_image_version: "3.0.0-nightly_fdbbd6c2"
 brane_worker_hostname: "{{ ansible_host }}"
 
+#smoke test
+smoke_test_dest: "{{ brane_central_install_dir }}/target/release/smoke-test"
+smoke_test_base_url: "https://raw.githubusercontent.com/AdamBelloum/brane-deployment/main/scripts/smoke-testi"
 
 #Base GitHub release URL- worker-compose.yml 
 brane_worker_compose_url: "https://raw.githubusercontent.com/AdamBelloum/brane-deployment/refs/heads/main/scripts/templates/worker-compose.yml"
@@ -29,14 +32,21 @@ _brane_release_base: "https://github.com/BraneFramework/brane/releases/download/
 ############################
 # Binary download URLs
 ############################
-branectl_url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-linux-x86_64"
-brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/nightly/brane-linux-x86_64"
+# These are the nightly version of branectl and brane cli, I have to issues running branescripts 
+#
+#branectl_url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-linux-x86_64"
+#brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/nightly/brane-linux-x86_64"
 
-  #branectl_url: >-
-  #https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}
+# These are the test release version of branectl and brane cli, I think created for test
+branectl_url: "https://github.com/BraneFramework/brane/releases/download/test/branectl-linux-x86_64"
+brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/test/brane-linux-x86_64"
 
-  #brane_cli_url: >-
-  #https://github.com/BraneFramework/brane/releases/download/nightly/brane-{{ ansible_system | lower }}-{{ ansible_architecture }}
+# These are generic URLs to be able to define the appropriate version of the branectl and brane cli on the target
+# architecture to be avoid hard coded value
+#
+#branectl_url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}"
+
+#brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/nightly/brane-{{ ansible_system | lower }}-{{ ansible_architecture }}"
 
 ############################
 # Local binary locations

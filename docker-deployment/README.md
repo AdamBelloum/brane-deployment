@@ -32,8 +32,8 @@ brane-docker-deployment/
 
 Direction | Source | Destination| Port | ProtocolPurpose
 Inbound | Ansible Control Node | All VMs (1, 2, 3) | 22                     | TCP Ansible Playbook Execution
-Inbound | Admin Laptop         | CI/CD  VM1        | (145.100.135.209)30051 | TCP Brane CLI Package Pushing
-Inbound | VM2 & VM3            | VM1               | (145.100.135.209)50051 | TCPWorkers connecting to Central Hub
+Inbound | Admin Laptop         | CI/CD  VM1        | (XXX.XXX.XXX.XXX)30051 | TCP Brane CLI Package Pushing
+Inbound | VM2 & VM3            | VM1               | (XXX.XXX.XXX.XXX)50051 | TCPWorkers connecting to Central Hub
 Inbound | VM1 & Cross-Workers  | VM2 & VM          | 350052                 | TCPInter-worker data transfer & proxy
 Outbound| All VMs              | Internet          | 80, 443                | TCP
 
