@@ -1,6 +1,0 @@
-import brane_smoke_test;
-
-on "worker-a" {
-    let result := ping();
-    println(result);
-}
