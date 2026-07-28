@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+
+
+https://github.com/BraneFramework/brane/releases/download/test/branelet-linux-x86_64
+
 # Resolve paths relative to the repo root so the script can be run from anywhere.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PACKAGE_DIR="$ROOT_DIR/scripts/smoke-test/moke-test-package"
@@ -46,7 +50,9 @@ download_branelet() {
   if [ -x "$BRANELET_PATH" ]; then
     return 0
   fi
-  curl -fsSL "https://github.com/BraneFramework/brane/releases/download/v${BRANE_VERSION}/branelet-x86_64" -o "$BRANELET_PATH"
+  #TODO: this is the version used in the orginal test, I have modified to becayse I use the Test version branectl brane cli
+  #curl -fsSL "https://github.com/BraneFramework/brane/releases/download/v${BRANE_VERSION}/branelet-x86_64" -o "$BRANELET_PATH"
+  curl -fsSL "https://github.com/BraneFramework/brane/releases/download/test/branelet-linux-x86_64" -o "$BRANELET_PATH"
   chmod +x "$BRANELET_PATH"
 }
 
