@@ -1,31 +1,4 @@
-import streamlit as st
-
-# ===================================================================
-# 🌐 INITIALIZATION & SETUP
-# ===================================================================
-st.set_page_config(page_title="Brane Hub Console", page_icon="🌐", layout="wide")
-
-# Persistent Global Variables for Async Deployments across all pages
-if "global_pkg_status" not in st.session_state:
-    st.session_state.global_pkg_status = "idle"
-if "global_pkg_logs" not in st.session_state:
-    st.session_state.global_pkg_logs = []
-    
-if "global_infra_status" not in st.session_state:
-    st.session_state.global_infra_status = "idle"
-if "global_infra_proc" not in st.session_state:
-    st.session_state.global_infra_proc = None  # Holds the live Popen process
-if "global_infra_logs" not in st.session_state:
-    st.session_state.global_infra_logs = ""     # Continuous text log buffer
-
-# ===================================================================
-# 📦 LAZY LAUNCH MODULE IMPORTS
-# ===================================================================
-from modules.home import render_home_dashboard
-from modules.Deploy_Infrastructure import render_infra_deploy
-from modules.Deploy_Packages import render_packages_deploy
-from modules.Cluster_Configurator import render_cluster_config
-from modules.Editor_Brane_Scripts import render_brane_scripts
+brane_scripts
 from modules.Editor_Data_Policy import render_data_policy
 from modules.Deploy_cli import render_cli_panel
 # ===================================================================
@@ -70,7 +43,7 @@ elif page_selection == "Editor Data Policy":
 
 
 # ===================================================================
-# 📑 UNIVERSAL SIDEBAR FOOTER RESOURCE LINKS
+#  UNIVERSAL SIDEBAR FOOTER RESOURCE LINKS
 # ===================================================================
 with st.sidebar:
     st.markdown("### 🌐 Official Brane Resources")
