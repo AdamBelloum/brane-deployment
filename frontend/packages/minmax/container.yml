@@ -1,0 +1,36 @@
+ The package metadata
+name: minmax 
+version: 1.0.0
+kind: ecu
+
+actions:
+  # The max command
+  max:
+    command:
+      args:
+      - max
+    input:
+    - name: column
+      type: string
+    - name: file
+      # This is new!
+      type: Data   #  <--- Tells Brane this is a dataset reference, not a simple string
+    output:
+    - name: output
+      # This is also new!
+      type: IntermediateResult  # <--- Tells Brane this is a dataset reference, not a simple string
+
+  # The min command, 
+  min:
+    command:
+      args:
+      - min
+    input:
+    - name: column
+      type: string
+    - name: file
+      type: Data   # <--- Tells Brane this is a dataset reference, not a simple string
+    output:
+    - name: output
+      type: IntermediateResult
+ 

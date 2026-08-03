@@ -1,0 +1,17 @@
+// Simple eFLINT policy example
+fact User;
+fact Dataset;
+fact Action;
+
+relation may_access(User, Action, Dataset);
+
+// Example rule: doctors may read patient_data
+fact doctor(User);
+fact patient_data(Dataset);
+
+rule allow_doctor_access(User, Dataset) {
+    if doctor(User) and patient_data(Dataset) then
+        may_access(User, read, Dataset);
+}
+
+// Default behaviour: if no rule derives may_access(), access is denied.

@@ -1,0 +1,7 @@
+# This determines the name, or more accurately, identifier, of the dataset.
+name: numbers
+
+# This determine how we access the data. In this example, we use a file, but check the wiki to find all possible kinds.
+access: !file
+  # Note that relative paths, per default, are relative to this file.
+  path: ./numbers.csv

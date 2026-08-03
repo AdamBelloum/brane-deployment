@@ -1,0 +1,12 @@
+// Hello World BraneScript workflow
+
+import hello_world;
+
+#syntax in the branescript specification 
+
+#[on("worker1")]
+{
+ println(hello_world());
+
+};
+
