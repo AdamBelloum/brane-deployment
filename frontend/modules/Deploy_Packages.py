@@ -12,7 +12,7 @@ import streamlit as st
 #CURRENT_DIR = os.path.dirname(os.path.abspath(__file__)) 
 #REPO_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../..")) 
 #INVENTORY_PATH = os.path.join(REPO_ROOT, "docker-deployment/inventories/production/hosts.ini")
-from config import INVENTORY_PATH, get_brane_executable
+from modules.config import INVENTORY_PATH, get_brane_executable
 
 #def get_brane_executable():
 #    """Dynamically locates the brane CLI binary on the host machine."""

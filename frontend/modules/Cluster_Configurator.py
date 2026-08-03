@@ -10,7 +10,7 @@ import streamlit as st
 #ANSIBLE_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "../../docker-deployment"))
 #INVENTORY_PATH = os.path.join(ANSIBLE_DIR, "inventories/production/hosts.ini")
 #TEMPLATE_PATH = os.path.join(ANSIBLE_DIR, "inventories/production/hosts.ini.template")
-from config import INVENTORY_PATH, INVENTORY_TEMPLATE_PATH as TEMPLATE_PATH
+from modules.config import INVENTORY_PATH, INVENTORY_TEMPLATE_PATH as TEMPLATE_PATH
 
 def load_inventory():
     """Reads current host mappings safely from the filesystem."""

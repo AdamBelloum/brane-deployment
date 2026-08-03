@@ -8,7 +8,7 @@ import streamlit as st
 #CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 #ANSIBLE_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "../../docker-deployment"))
 #INVENTORY = os.path.join(ANSIBLE_DIR, 'inventories/production/hosts.ini')
-from config import ANSIBLE_DIR, INVENTORY_PATH as INVENTORY
+from modules.config import ANSIBLE_DIR, INVENTORY_PATH as INVENTORY
 
 
 def render_infra_deploy():

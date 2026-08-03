@@ -35,11 +35,11 @@ services:
     restart: always
 
   # Xenon is an auxiliary Brane service expected by the central stack.
-  brane-xenon:
-    <<: *common-hosts
-    image: aux-xenon:${BRANE_VERSION:-latest}
-    command: -v
-    restart: always
+  #brane-xenon:
+  #  <<: *common-hosts
+  #  image: aux-xenon:${BRANE_VERSION:-latest}
+  #  command: -v
+  #  restart: always
 
   # PRX is the proxy/TLS entrypoint used for node-to-node communication.
   brane-prx:

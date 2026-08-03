@@ -44,6 +44,10 @@ On your **control machine** (laptop or CI runner):
 ```bash
 pip install -r requirements.txt
 ```
+also required Ansible collections
+```bash
+ansible-galaxy collection install ansible.posix
+```
 
 ---
 
