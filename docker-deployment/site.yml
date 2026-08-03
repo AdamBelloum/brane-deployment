@@ -22,6 +22,17 @@
         name: brane_deploy
         tasks_from: branectl
 
+- name: "Brane — install brane cli"
+  hosts: all
+  become: false
+  gather_facts: true
+  tags: [branecli]
+  tasks:
+    - name: "Include branecli tasks"
+      include_role:
+        name: brane_deploy
+        tasks_from: branecli
+
 - name: "Brane — configure & prepare worker nodes"
   hosts: workers
   become: false

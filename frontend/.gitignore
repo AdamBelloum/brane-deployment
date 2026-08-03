@@ -13,8 +13,9 @@ frontend/
 policy-reasoner-gui
 
 # user local datasets, packages  and NOTES -used in frontend/
-datasets/
-packages/
+!packages/hello_world/
+!packages/minmax/
+!datasets/minmax/
 NOTES
 
 #domain certificates

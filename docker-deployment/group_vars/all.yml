@@ -10,7 +10,7 @@
 
 # Home directory of the SSH/deploy user on the target VMs.
 # Change this to match your remote user (e.g. /home/ubuntu, /home/adam).
-brane_user_home: "/home/ubuntu"
+brane_user_home: "/home/adam"
 
 #############################
 # ── Brane image version ─────
