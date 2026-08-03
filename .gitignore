@@ -1,34 +1,75 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-venv/
-.venv/
-env/
-.env
+# ──────────────────────────────────────────
+# Secrets & local config  (NEVER commit these)
+# ──────────────────────────────────────────
+scripts/.brane_helper.env
+*.env
+!*.env.example
 
-#local files
-NOTES
-*.old
-*.bak
-
-# Streamlit operational configurations
-.streamlit/
-
-# Brane local temporary cache workspaces
-workflow_codes/
-policies/
-/tmp/brane-*
-/tmp/hello-world-test/
-
-# Secure certificates and secrets (Crucial for infrastructure safety)
+# Private keys and certificates
 *.pem
 *.key
 *.crt
-*.json
-docker-deployment/inventories/production/hosts.ini
-!docker-deployment/inventories/production/hosts.ini.template
+*.pfx
+*.p12
+ca-key.pem
+worker-key.pem
 
-# OS files
+# Ansible Vault files
+*.vault.yml
+*.vault.yaml
+
+# Temporary cert artifacts created during deployment
+artifacts/
+/tmp/brane_certs/
+
+# ──────────────────────────────────────────
+# Ansible
+# ──────────────────────────────────────────
+*.retry
+.ansible/
+ansible_collections/
+
+# ──────────────────────────────────────────
+# Python
+# ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ──────────────────────────────────────────
+# Streamlit
+# ──────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ──────────────────────────────────────────
+# Generated output files
+# ──────────────────────────────────────────
+brane_all_helps.md
+
+# ──────────────────────────────────────────
+# OS / editor noise
+# ──────────────────────────────────────────
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+

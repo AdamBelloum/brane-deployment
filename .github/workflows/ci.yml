@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+
+  # ────────────────────────────────────────────────
+  # 1. Ansible lint + YAML lint (docker-deployment)
+  # ────────────────────────────────────────────────
+  ansible-lint:
+    name: Ansible & YAML lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ansible dependencies
+        run: pip install -r docker-deployment/requirements.txt
+
+      - name: Install lint tools
+        run: pip install ansible-lint yamllint
+
+      - name: Run yamllint on docker-deployment
+        run: |
+          yamllint -d "{extends: relaxed, rules: {line-length: {max: 160}}}" \
+            docker-deployment/
+
+      - name: Run ansible-lint on site.yml
+        working-directory: docker-deployment
+        run: ansible-lint site.yml
+
+  # ────────────────────────────────────────────────
+  # 2. Shellcheck (scripts/)
+  # ────────────────────────────────────────────────
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck on all shell scripts
+        run: |
+          find scripts/ docker-deployment/ -name "*.sh" -print0 \
+            | xargs -0 shellcheck --severity=warning
+
+  # ────────────────────────────────────────────────
+  # 3. Python checks (frontend/)
+  # ────────────────────────────────────────────────
+  python-lint:
+    name: Python lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install frontend dependencies
+        run: pip install -r frontend/requirements.txt
+
+      - name: Install lint tools
+        run: pip install ruff
+
+      - name: Check syntax (compile all .py files)
+        run: python -m compileall frontend/
+
+      - name: Run ruff linter
+        run: ruff check frontend/ --select E,F,W --ignore E501
+
