@@ -6,12 +6,11 @@ import streamlit as st
 # ===================================================================
 # BULLETPROOF RE-ROUTING FOR THE MODULAR LAYOUT
 # ===================================================================
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Moves up out of 'modules' and down into 'docker-deployment'
-ANSIBLE_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "../../docker-deployment"))
-INVENTORY_PATH = os.path.join(ANSIBLE_DIR, "inventories/production/hosts.ini")
-TEMPLATE_PATH = os.path.join(ANSIBLE_DIR, "inventories/production/hosts.ini.template")
-
+#CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+#ANSIBLE_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "../../docker-deployment"))
+#INVENTORY_PATH = os.path.join(ANSIBLE_DIR, "inventories/production/hosts.ini")
+#TEMPLATE_PATH = os.path.join(ANSIBLE_DIR, "inventories/production/hosts.ini.template")
+from config import INVENTORY_PATH, INVENTORY_TEMPLATE_PATH as TEMPLATE_PATH
 
 def load_inventory():
     """Reads current host mappings safely from the filesystem."""
@@ -35,9 +34,9 @@ def save_inventory(config):
 
 def render_cluster_config():
     """Isolated view module for the Cluster Topology management workspace."""
-    st.title("⚙️ Brane Cluster Topology Configurator")
+    st.title("Brane Cluster Topology Configurator")
 
-    with st.expander("📖 Topology Management Guidelines", expanded=True):
+    with st.expander(" Topology Management Guidelines", expanded=True):
         col_a, col_b = st.columns(2)
         with col_a:
             st.markdown("""
@@ -70,7 +69,7 @@ def render_cluster_config():
     # -------------------------------------------------------------------
     # VIEW CURRENT TOPOLOGY
     # -------------------------------------------------------------------
-    st.subheader("📋 Current Active Inventory Map")
+    st.subheader(" Current Active Inventory Map")
     if not sections:
         st.info("The hosts.ini inventory file is currently empty or unparsed.")
     else:
@@ -88,7 +87,7 @@ def render_cluster_config():
     # -------------------------------------------------------------------
     # MODIFY TOPOLOGY MANAGEMENT
     # -------------------------------------------------------------------
-    st.subheader("🛠️ Topology Modifications Workspace")
+    st.subheader(" Topology Modifications Workspace")
 
     action_mode = st.radio(
         "Select Layout Operation:", 
@@ -125,7 +124,7 @@ def render_cluster_config():
         with col_add3:
             node_ip = st.text_input(
                 "Target Node IP Address:", 
-                value=st.session_state.get("cfg_node_ip", "145.100.135."), 
+                value=st.session_state.get("cfg_node_ip", ""), 
                 placeholder="e.g. 145.100.135.200",
                 key="cfg_node_ip"
             )
@@ -188,7 +187,7 @@ def render_cluster_config():
                 
                 # Clear state to force sync reload
                 del st.session_state['inventory']
-                st.success(f"🗑️ Successfully removed `{rm_host}` from `hosts.ini` configuration limits.")
+                st.success(f"Successfully removed `{rm_host}` from `hosts.ini` configuration limits.")
                 st.rerun()
             else:
                 st.error("Invalid node layout drop targets selected.")
