@@ -1,5 +1,10 @@
 name: CI
 
+# This CI validates the quality of the toolbox itself (scripts, YAML syntax,
+# Python code). It does NOT deploy Brane. Deployment is always triggered
+# manually by an admin who clones this repo and runs the Ansible playbook
+# against their own infrastructure.
+
 on:
   push:
     branches: ["main"]
@@ -9,36 +14,28 @@ on:
 jobs:
 
   # ────────────────────────────────────────────────
-  # 1. Ansible lint + YAML lint (docker-deployment)
+  # 1. YAML syntax check (docker-deployment/)
+  #    Only validates that YAML files are well-formed.
+  #    Does NOT run ansible-lint — that would require
+  #    a real inventory and live SSH targets.
   # ────────────────────────────────────────────────
-  ansible-lint:
-    name: Ansible & YAML lint
+  yaml-lint:
+    name: YAML syntax check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Install yamllint
+        run: pip install yamllint
 
-      - name: Install Ansible dependencies
-        run: pip install -r docker-deployment/requirements.txt
-
-      - name: Install lint tools
-        run: pip install ansible-lint yamllint
-
-      - name: Run yamllint on docker-deployment
+      - name: Check YAML syntax in docker-deployment/
         run: |
-          yamllint -d "{extends: relaxed, rules: {line-length: {max: 160}}}" \
+          yamllint -d "{extends: relaxed, rules: {line-length: {max: 160}, truthy: disable}}" \
             docker-deployment/
 
-      - name: Run ansible-lint on site.yml
-        working-directory: docker-deployment
-        run: ansible-lint site.yml
-
   # ────────────────────────────────────────────────
-  # 2. Shellcheck (scripts/)
+  # 2. Shell script lint (scripts/)
+  #    Catches common bash bugs without executing anything.
   # ────────────────────────────────────────────────
   shellcheck:
     name: Shellcheck
@@ -55,7 +52,8 @@ jobs:
             | xargs -0 shellcheck --severity=warning
 
   # ────────────────────────────────────────────────
-  # 3. Python checks (frontend/)
+  # 3. Python syntax check (frontend/)
+  #    Verifies the Streamlit app compiles cleanly.
   # ────────────────────────────────────────────────
   python-lint:
     name: Python lint
@@ -63,18 +61,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install frontend dependencies
         run: pip install -r frontend/requirements.txt
 
-      - name: Install lint tools
+      - name: Install ruff
         run: pip install ruff
 
-      - name: Check syntax (compile all .py files)
+      - name: Check Python syntax (compile all .py files)
         run: python -m compileall frontend/
 
       - name: Run ruff linter

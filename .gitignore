@@ -14,6 +14,9 @@ scripts/.brane_helper.env
 ca-key.pem
 worker-key.pem
 
+# contain specific IP address
+hosts.ini
+
 # Ansible Vault files
 *.vault.yml
 *.vault.yaml
@@ -72,4 +75,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.iml
-
+*.bak
+*.old
+NOTES
