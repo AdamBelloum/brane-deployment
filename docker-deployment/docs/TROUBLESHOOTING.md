@@ -1,6 +1,6 @@
 ---
-# Brane Deployment Troubleshooting Guide
 
+# Brane Deployment Troubleshooting Guide
 
 **Date:** 2026-07-27
 **Host:** ab-01.lab.uvalight.net
@@ -19,7 +19,6 @@ The underlying issue is that `branectl` dynamically writes a temporary Docker Co
 Running 'docker compose' up on /tmp/docker-compose-proxyv7EyZw.yml...
 unable to get image 'brane-prx:3.0.0-nightly+fdbbd6c2': Error response from daemon: invalid reference format
 ERROR: Command 'BRANE_IMAGE_VERSION="3.0.0-nightly_fdbbd6c2" BRANE_VERSION="3.0.0-nightly+fdbbd6c2" ... "docker" "compose" "up" "-d"' failed with exit code 1
-
 ```
 
 ### **Root Cause Analysis**
