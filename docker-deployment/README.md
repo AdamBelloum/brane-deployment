@@ -144,9 +144,9 @@ The deployment uses an ephemeral CA trust model to avoid persistent key exposure
 
 | Asset            | Central Hub | Worker Nodes | Risk level         |
 |------------------|-------------|--------------|---------------------|
-| `ca.pem`         | ✅ Present  | ✅ Present   | Public / Low        |
-| `ca-key.pem`     | ✅ Present  | 🗑 Purged    | Critical / Confined |
-| `worker-key.pem` | ❌ Absent   | ✅ Present   | High / Node-bound   |
+| `ca.pem`         |    Present  |    Present   | Public / Low        |
+| `ca-key.pem`     |    Present  |    Purged    | Critical / Confined |
+| `worker-key.pem` |    Absent   |    Present   | High / Node-bound   |
 
 ---
 
