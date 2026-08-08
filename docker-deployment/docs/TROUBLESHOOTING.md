@@ -206,7 +206,7 @@ The nightly `brane instance list` output confirms the registered instance uses e
 
 ```
 NAME                       API                                DRIVER
-ab-01.lab.uvalight.net   ab-01.lab.uvalight.net:50051     ab-01.lab.uvalight.net:50053
+Host-name            Host-name:50051                       Host-nam:50053
 ```
 
 The smoke test script passes `INSTANCE_NAME` directly to `brane workflow run --remote`, bypassing the registered instance configuration entirely. This means port resolution depends on which CLI version is active:
