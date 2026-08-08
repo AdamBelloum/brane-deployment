@@ -1,11 +1,8 @@
----
-
 # Brane Deployment Troubleshooting Guide
 
 **Date:** 2026-07-27
 **Host:** ab-01.lab.uvalight.net
 **Reporter:** adam
-
 
 ## 1. Issue: `branectl start proxy` fails due to un-sanitized version tag (`+` symbol)
 
