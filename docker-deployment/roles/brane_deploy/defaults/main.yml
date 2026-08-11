@@ -52,7 +52,7 @@ brane_central_internal_hostname: "brane-central.internal"
 # Central service names & ports
 ############################
 brane_drv_name: "brane-drv"
-brane_drv_port: 50052
+brane_drv_port: 50053
 brane_prx_name: "brane-prx"
 brane_api_name: "brane-api"
 brane_api_port: 50051

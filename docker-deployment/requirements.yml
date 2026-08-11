@@ -1,0 +1,6 @@
+---
+collections:
+  - name: ansible.posix       # acl, synchronize, sysctl, etc.
+  - name: community.docker    # docker_compose, docker_container, etc.
+  - name: community.general   # various utility modules
+

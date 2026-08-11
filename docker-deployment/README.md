@@ -46,7 +46,7 @@ pip install -r requirements.txt
 ```
 also required Ansible collections
 ```bash
-ansible-galaxy collection install ansible.posix
+ansible-galaxy collection install -r requirements.yml --ignore-certs
 ```
 
 ---
