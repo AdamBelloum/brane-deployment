@@ -12,6 +12,18 @@
 set -o nounset
 set -o pipefail
 
+
+
+#!/usr/bin/env bash
+# Ensure ~/.local/bin is in PATH for brane/branectl
+
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+  echo "[OK] Added ~/.local/bin to PATH"
+else
+  echo "[OK] ~/.local/bin already in PATH"
+fi
+
 # ==========================================
 # RESOLVE REPO ROOT & LOAD CONFIG
 # ==========================================
