@@ -290,7 +290,8 @@ while true; do
             BUILD_SCRIPT="${BUILD_SCRIPT:-${SCRIPT_DIR}/package_build_macOS.sh}"
             run_cmd "'${BUILD_SCRIPT}' '${PACKAGE_DIR}/${PACKAGE_NAME}/${CONTAINER_YML}'"
         else
-            run_cmd "brane package build '${PACKAGE_DIR}/${PACKAGE_NAME}/${CONTAINER_YML}'"
+            run_cmd "brane package build --arch x86_64 '${PACKAGE_DIR}/${PACKAGE_NAME}/${CONTAINER_YML}'"
+	    --arch x86_64
         fi
         press_enter
         ;;
