@@ -80,6 +80,7 @@ services:
       - "0.0.0.0:${DRV_PORT}:${DRV_PORT}"
     volumes:
       - ${NODE_CONFIG_PATH}:/node.yml
+      - ${CERTS}:${CERTS}
       - ${INFRA}:${INFRA}
     depends_on:
       - aux-kafka
