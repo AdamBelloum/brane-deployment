@@ -35,6 +35,7 @@ services:
       - ${BACKEND}:${BACKEND}
       - ${POLICIES}:${POLICIES}
       - ${CERTS}:${CERTS}
+      - ${SECRETS}:${SECRETS}
       - ${DATA}:${DATA}
       - ${RESULTS}:${RESULTS}
 
