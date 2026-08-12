@@ -156,6 +156,18 @@
     chdir: "{{ brane_worker_install_dir }}"
   changed_when: true
 
+
+- name: "Worker | Fix certificate permissions via ACL for container UID"
+  ansible.posix.acl:
+    path: "{{ item }}"
+    entity: "1000"
+    etype: user
+    permissions: r
+    state: present
+  loop:
+    - "{{ brane_worker_install_dir }}/config/certs/server-key.pem"
+    - "{{ brane_worker_install_dir }}/config/certs/ca-key.pem"
+
 # ── Compose file ───────────────────────────────────────────────────────────────
 
 - name: "Worker | Download docker-compose.yml from Git repo"
