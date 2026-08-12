@@ -47,7 +47,8 @@ services:
     image: brane-chk:${BRANE_VERSION:-latest}
     container_name: ${CHK_NAME}
     restart: always
-    command: --delib-token ${DELIB_TOKEN}
+    #command: --delib-token ${DELIB_TOKEN}\
+    command: --backend-cmd "docker" --delib-keys ${DELIB_KEYS}
     volumes:
       - ${NODE_CONFIG_PATH}:/node.yml
       - ${POLICIES}:${POLICIES}
