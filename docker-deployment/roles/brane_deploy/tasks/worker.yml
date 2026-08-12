@@ -68,44 +68,6 @@
     remote_src: true
     extra_opts: ["--strip-components=1"]
 
-# ── Compose file ───────────────────────────────────────────────────────────────
-
-- name: "Worker | Download docker-compose.yml from Git repo"
-  become: false
-  ansible.builtin.get_url:
-    url: "{{ brane_worker_compose_url }}"
-    dest: "{{ brane_worker_install_dir }}/docker-compose.yml"
-    mode: "0644"
-    owner: "{{ ansible_user }}"
-    force: true
-
-- name: "Worker | Write .env for docker-compose"
-  become: false
-  ansible.builtin.copy:
-    dest: "{{ brane_worker_install_dir }}/.env"
-    owner: "{{ ansible_user }}"
-    mode: "0640"
-    content: |
-      BRANE_VERSION={{ brane_image_tag }}
-      NODE_CONFIG_PATH={{ brane_worker_install_dir }}/node.yml
-      BACKEND={{ brane_worker_install_dir }}/config/backend.yml
-      PROXY={{ brane_worker_install_dir }}/config/proxy.yml
-      POLICIES={{ brane_worker_install_dir }}/config/policies.yml
-      CERTS={{ brane_worker_install_dir }}/config/certs
-      PACKAGES={{ brane_worker_install_dir }}/packages
-      DATA={{ brane_worker_install_dir }}/data
-      RESULTS={{ brane_worker_install_dir }}/results
-      TEMP_DATA=/tmp/data
-      TEMP_RESULTS=/tmp/results
-      PRX_NAME=brane-prx
-      REG_NAME=brane-reg
-      JOB_NAME=brane-job
-      BRANE_CENTRAL_IP={{ hostvars[groups['central'][0]]['ansible_host'] }}
-      WORKER_A_IP={{ hostvars[groups['workers'][0]]['ansible_host'] }}
-      WORKER_B_IP={{ hostvars[groups['workers'][1]]['ansible_host'] }}
-      REG_PORT=50051
-      JOB_PORT=50053
-
 # ── Config generation ──────────────────────────────────────────────────────────
 
 - name: "Worker | Generate backend config"
@@ -194,6 +156,53 @@
     chdir: "{{ brane_worker_install_dir }}"
   changed_when: true
 
+# ── Compose file ───────────────────────────────────────────────────────────────
+
+- name: "Worker | Download docker-compose.yml from Git repo"
+  become: false
+  ansible.builtin.get_url:
+    url: "{{ brane_worker_compose_url }}"
+    dest: "{{ brane_worker_install_dir }}/docker-compose.yml"
+    mode: "0644"
+    owner: "{{ ansible_user }}"
+    force: true
+
+- name: "Worker | Read delib token from secret file"
+  ansible.builtin.command:
+    cmd: jq -r '.keys[0].k' {{ brane_worker_install_dir }}/config/secrets/policy_delib_secret.json
+  register: brane_delib_token
+  changed_when: false
+
+- name: "Worker | Write .env for docker-compose"
+  become: false
+  ansible.builtin.copy:
+    dest: "{{ brane_worker_install_dir }}/.env"
+    owner: "{{ ansible_user }}"
+    mode: "0640"
+    content: |
+      BRANE_VERSION={{ brane_image_tag }}
+      NODE_CONFIG_PATH={{ brane_worker_install_dir }}/node.yml
+      BACKEND={{ brane_worker_install_dir }}/config/backend.yml
+      PROXY={{ brane_worker_install_dir }}/config/proxy.yml
+      POLICIES={{ brane_worker_install_dir }}/policies.db
+      DELIB_TOKEN={{ brane_delib_token.stdout }}
+      CERTS={{ brane_worker_install_dir }}/config/certs
+      SECRETS={{ brane_worker_install_dir }}/config/secrets
+      PACKAGES={{ brane_worker_install_dir }}/packages
+      DATA={{ brane_worker_install_dir }}/data
+      RESULTS={{ brane_worker_install_dir }}/results
+      TEMP_DATA=/tmp/data
+      TEMP_RESULTS=/tmp/results
+      PRX_NAME=brane-prx
+      REG_NAME=brane-reg
+      JOB_NAME=brane-job-{{ inventory_hostname }}
+      CHK_NAME=brane-chk-{{ inventory_hostname }}
+      BRANE_CENTRAL_IP={{ hostvars[groups['central'][0]]['ansible_host'] }}
+      WORKER_A_IP={{ hostvars[groups['workers'][0]]['ansible_host'] }}
+      WORKER_B_IP={{ hostvars[groups['workers'][1]]['ansible_host'] }}
+      REG_PORT=50051
+      JOB_PORT=50052
+
 # ── Docker images ──────────────────────────────────────────────────────────────
 
 - name: "Worker | Load and tag Docker images"
@@ -205,5 +214,6 @@
     - { file: "brane-prx.tar", image: "brane-prx" }
     - { file: "brane-reg.tar", image: "brane-reg" }
     - { file: "brane-job.tar", image: "brane-job" }
+    - { file: "brane-chk.tar", image: "brane-chk" }
   changed_when: true
 

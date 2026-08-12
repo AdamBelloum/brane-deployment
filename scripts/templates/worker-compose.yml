@@ -28,6 +28,7 @@ services:
     image: brane-reg:${BRANE_VERSION:-latest}
     container_name: ${REG_NAME}
     restart: always
+    command: --delib-token ${DELIB_TOKEN}
     ports:
       - "0.0.0.0:${REG_PORT}:${REG_PORT}"
     volumes:
@@ -38,6 +39,20 @@ services:
       - ${SECRETS}:${SECRETS}
       - ${DATA}:${DATA}
       - ${RESULTS}:${RESULTS}
+      - ${SECRETS}:${SECRETS}
+
+  # CHK is the policy checker — consulted by brane-job before executing tasks.
+  brane-chk:
+    <<: *common-hosts
+    image: brane-chk:${BRANE_VERSION:-latest}
+    container_name: ${CHK_NAME}
+    restart: always
+    command: --delib-token ${DELIB_TOKEN}
+    volumes:
+      - ${NODE_CONFIG_PATH}:/node.yml
+      - ${POLICIES}:${POLICIES}
+      - ${CERTS}:${CERTS}
+      - ${SECRETS}:${SECRETS}
 
   # JOB executes package containers for workflows scheduled onto this worker.
   brane-job:
@@ -45,6 +60,7 @@ services:
     image: brane-job:${BRANE_VERSION:-latest}
     container_name: ${JOB_NAME}
     restart: always
+    command: --delib-token ${DELIB_TOKEN}
     ports:
       - "0.0.0.0:${JOB_PORT}:${JOB_PORT}"
     volumes:

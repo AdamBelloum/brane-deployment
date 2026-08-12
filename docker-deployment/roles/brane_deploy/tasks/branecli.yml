@@ -31,5 +31,5 @@
 # show version of brane CLI
 - name: "brane cli | Show version"
   ansible.builtin.debug:
-    msg: "brane version: {{ _brane_version.stdout }}"
+    msg: "brane version: {{ brane_version.stdout }}"
   tags: [branecli]

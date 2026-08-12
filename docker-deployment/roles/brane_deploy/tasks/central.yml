@@ -55,6 +55,27 @@
   become: false
   tags: [central]
 
+- name: "Central | Grant container UID 1000 rwx on packages dir"
+  ansible.posix.acl:
+    path: "{{ brane_central_install_dir }}/packages"
+    entity: "1000"
+    etype: user
+    permissions: rwx
+    state: present
+  become: false
+  tags: [central]
+
+- name: "Central | Set default ACL on packages dir (inherit for new subdirs)"
+  ansible.posix.acl:
+    path: "{{ brane_central_install_dir }}/packages"
+    entity: "1000"
+    etype: user
+    permissions: rwx
+    default: true
+    state: present
+  become: false
+  tags: [central]
+
 # ── Tarball ────────────────────────────────────────────────────────────────────
 - name: "Central | Download central release tarball"
   ansible.builtin.get_url:

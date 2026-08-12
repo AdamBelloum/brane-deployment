@@ -13,11 +13,21 @@
   become: false
   tags: [certs]
 
+#- name: "Certs | Fetch central public key"
+#  ansible.builtin.slurp:
+#    src: ~/.ssh/id_ed25519.pub
+#  register: central_pubkey
+#  when: inventory_hostname in groups['central']
+#  become: false
+#  tags: [certs]
+
+
 - name: "Certs | Fetch central public key"
   ansible.builtin.slurp:
     src: ~/.ssh/id_ed25519.pub
   register: central_pubkey
-  when: inventory_hostname in groups['central']
+  delegate_to: "{{ groups['central'][0] }}"
+  run_once: true
   become: false
   tags: [certs]
 

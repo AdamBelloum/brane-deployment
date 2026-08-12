@@ -111,7 +111,7 @@ execute_brane_build() {
 
     # Running the native Brane build command directly now that the correct
     # buildx builder is set as the active default context.
-    if brane package build "$target_yml"; then
+    if brane package build --arch x86_64 "$target_yml"; then
         log_success "Brane package built successfully!"
     else
         log_error "Package build failed. Review the output logs above."
