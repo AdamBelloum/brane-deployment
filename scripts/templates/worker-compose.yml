@@ -60,7 +60,7 @@ services:
 
   # JOB executes package containers for workflows scheduled onto this worker.
   brane-job:
-    <<: *common-hosts
+    # <<: *common-hosts
     image: brane-job:${BRANE_VERSION:-latest}
     container_name: ${JOB_NAME}
     restart: always
