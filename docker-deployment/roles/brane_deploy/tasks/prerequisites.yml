@@ -87,6 +87,7 @@
 # These can stay non-root (operate in /home/adam):
 
 - name: "Prerequisites | Ensure ~/.local/bin exists for {{ ansible_user }}"
+  become: false
   ansible.builtin.file:
     path: "{{ brane_user_home }}/.local/bin"
     state: directory

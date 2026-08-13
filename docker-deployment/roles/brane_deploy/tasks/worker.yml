@@ -179,13 +179,13 @@
     owner: "{{ ansible_user }}"
     force: true
 
-# ← ADD THIS NEW TASK HERE
+# new Fix
 - name: "Worker | Fix brane-chk command in docker-compose.yml"
   become: false
   ansible.builtin.replace:
     path: "{{ brane_worker_install_dir }}/docker-compose.yml"
-    regexp: 'command: --backend-cmd "docker" --delib-keys \$\{DELIB_KEYS\}'
-    replace: 'command: --delib-keys ${DELIB_KEYS}'
+    regexp: 'command: --delib-keys \$\{DELIB_KEYS\}'
+    replace: 'command: --node-config-path /node.yml --delib-keys ${SECRETS}/policy_delib_secret.json --store-keys ${SECRETS}/policy_store_secret.json'
 
 - name: "Worker | Read delib token from secret file"
   ansible.builtin.command:
@@ -206,6 +206,7 @@
       PROXY={{ brane_worker_install_dir }}/config/proxy.yml
       POLICIES={{ brane_worker_install_dir }}/policies.db
       DELIB_TOKEN={{ brane_delib_token.stdout }}
+      DELIB_KEYS={{ brane_delib_token.stdout }}
       CERTS={{ brane_worker_install_dir }}/config/certs
       SECRETS={{ brane_worker_install_dir }}/config/secrets
       PACKAGES={{ brane_worker_install_dir }}/packages
