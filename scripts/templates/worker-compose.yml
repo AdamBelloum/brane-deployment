@@ -48,7 +48,10 @@ services:
     container_name: ${CHK_NAME}
     restart: always
     #command: --delib-token ${DELIB_TOKEN}\
-    command: --backend-cmd "docker" --delib-keys ${DELIB_KEYS}
+    #command: --backend-cmd "docker" --delib-keys ${DELIB_KEYS}
+    command: --node-config-path /node.yml --delib-keys ${SECRETS}/policy_delib_secret.json --store-keys ${SECRETS}/policy_store_secret.json
+    ports:
+      - "0.0.0.0:${JOB_PORT}:${JOB_PORT}"   # ← move port publish here because of BRANE BUG
     volumes:
       - ${NODE_CONFIG_PATH}:/node.yml
       - ${POLICIES}:${POLICIES}
@@ -62,8 +65,7 @@ services:
     container_name: ${JOB_NAME}
     restart: always
     command: --delib-token ${DELIB_TOKEN}
-    ports:
-      - "0.0.0.0:${JOB_PORT}:${JOB_PORT}"
+    network_mode: "service:brane-chk"   # ← ← share brane-chk's network namespace
     volumes:
       - ${NODE_CONFIG_PATH}:/node.yml
       - ${BACKEND}:${BACKEND}

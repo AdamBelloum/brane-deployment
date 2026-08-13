@@ -181,40 +181,63 @@
     owner: "{{ ansible_user }}"
     force: true
 
-# new Fix
-- name: "Worker | Fix brane-chk command in docker-compose.yml"
-  become: false
-  ansible.builtin.replace:
-    path: "{{ brane_worker_install_dir }}/docker-compose.yml"
-    regexp: 'command: --delib-keys \$\{DELIB_KEYS\}'
-    replace: 'command: --node-config-path /node.yml --delib-keys ${SECRETS}/policy_delib_secret.json --store-keys ${SECRETS}/policy_store_secret.json'
+# TODO remove
+#- name: "Worker | Fix brane-chk command in docker-compose.yml"
+#  become: false
+#  ansible.builtin.replace:
+#    path: "{{ brane_worker_install_dir }}/docker-compose.yml"
+#    regexp: 'command: --delib-keys \$\{DELIB_KEYS\}'
+#    replace: 'command: --node-config-path /node.yml --delib-keys ${SECRETS}/policy_delib_secret.json --store-keys ${SECRETS}/policy_store_secret.json'
 
+# TODO remove
 #- name: "Worker | Read delib token from secret file"
 #  ansible.builtin.command:
 #    cmd: jq -r '.keys[0].k' {{ brane_worker_install_dir }}/config/secrets/policy_delib_secret.json
 #  register: brane_delib_token
 #  changed_when: false
 
+# TODO: remove
 # THIS IS TEMP SOLUTION TO GET the DELIB_TOKEN JWT
-- name: "Worker | Generate signed DELIB_TOKEN JWT"
+#- name: "Worker | Generate signed DELIB_TOKEN JWT"
+#  ansible.builtin.command:
+#    cmd: >
+#      python3 -c "
+#      import json, base64, hmac, hashlib, time
+#      secret = json.load(open('{{ brane_worker_install_dir }}/config/secrets/policy_delib_secret.json'))
+#      key_obj = secret['keys'][0]
+#      key = base64.urlsafe_b64decode(key_obj['k'] + '==')
+#      now = int(time.time())
+#      header  = base64.urlsafe_b64encode(json.dumps({'alg':'HS256','typ':'JWT','kid':key_obj['kid']},separators=(',',':')).encode()).rstrip(b'=').decode()
+#      payload = base64.urlsafe_b64encode(json.dumps({'sub':'brane-job','username':'brane-job','iat':now,'exp':now+315360000},separators=(',',':')).encode()).rstrip(b'=').decode()
+#      msg = f'{header}.{payload}'.encode()
+#      sig = base64.urlsafe_b64encode(hmac.new(key, msg, hashlib.sha256).digest()).rstrip(b'=').decode()
+#      print(f'{header}.{payload}.{sig}')
+#      "
+#  register: brane_delib_token
+#  changed_when: false
+
+- name: Worker | Copy JWT generation script
+  ansible.builtin.copy:
+    src: files/generate_jwt.py
+    dest: /tmp/generate_jwt.py
+    mode: '0700'
+
+- name: Worker | Generate DELIB_TOKEN JWT
   ansible.builtin.command:
-    cmd: >
-      python3 -c "
-      import json, base64, hmac, hashlib, time
-      secret = json.load(open('{{ brane_worker_install_dir }}/config/secrets/policy_delib_secret.json'))
-      key_obj = secret['keys'][0]
-      key = base64.urlsafe_b64decode(key_obj['k'] + '==')
-      now = int(time.time())
-      header  = base64.urlsafe_b64encode(json.dumps({'alg':'HS256','typ':'JWT','kid':key_obj['kid']},separators=(',',':')).encode()).rstrip(b'=').decode()
-      payload = base64.urlsafe_b64encode(json.dumps({'sub':'brane-job','username':'brane-job','iat':now,'exp':now+315360000},separators=(',',':')).encode()).rstrip(b'=').decode()
-      msg = f'{header}.{payload}'.encode()
-      sig = base64.urlsafe_b64encode(hmac.new(key, msg, hashlib.sha256).digest()).rstrip(b'=').decode()
-      print(f'{header}.{payload}.{sig}')
-      "
+    cmd: python3 /tmp/generate_jwt.py /home/adam/brane-worker/config/secrets/policy_delib_secret.json
   register: brane_delib_token
   changed_when: false
+  no_log: true
 
+- name: Worker | Set DELIB_TOKEN fact
+  ansible.builtin.set_fact:
+    delib_token: "{{ brane_delib_token.stdout }}"
+  no_log: true
 
+- name: Worker | Remove JWT generation script
+  ansible.builtin.file:
+    path: /tmp/generate_jwt.py
+    state: absent
 
 - name: "Worker | Write .env for docker-compose"
   become: false
