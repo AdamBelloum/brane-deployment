@@ -24,6 +24,11 @@ hosts.ini
 # Temporary cert artifacts created during deployment
 artifacts/
 /tmp/brane_certs/
+NOTES*
+
+allow-all-policy.eflint
+policy-reasoner-gui/
+tokens-certs/
 
 # ──────────────────────────────────────────
 # Ansible
