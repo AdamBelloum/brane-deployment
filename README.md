@@ -2,53 +2,24 @@
 
 Tooling to deploy and operate a [Brane](https://github.com/BraneFramework/brane) distributed computing cluster.
 
-## What is Brane?
-
-Brane is a programmable orchestration framework for distributed data pipelines across federated sites. This repository automates the full lifecycle: infrastructure provisioning, certificate exchange, service startup, and package deployment.
+Brane is a programmable orchestration framework for distributed data pipelines across federated sites. This repository covers the full lifecycle: infrastructure provisioning, certificate exchange, service startup, package deployment, and policy management.
 
 ---
 
 ## Repository layout
 
-```text
+```
 brane-deployment/
 ├── docker-deployment/      # Ansible-based deployment on bare Docker (active)
-├── frontend/               # Streamlit management console (active)
-├── scripts/                # Helper scripts: CLI wrapper, smoke tests, templates
-├── k8-deployment/          # Kubernetes/Helm deployment (work in progress)
-├── README-control-node     # Manual setup guide for the central hub node
-└── README-worker-node      # Manual setup guide for worker nodes
-```
-
----
-
-## Architecture overview
-
-```
-  ┌─────────────────────────────────────────────────────┐
-  │  Ansible Control Machine  (your laptop / CI runner) │
-  │                                                     │
-  │  docker-deployment/site.yml  ──────────────────┐   │
-  │  scripts/brane_helper.sh (interactive menu)    │   │
-  │  frontend/ (Streamlit GUI)                     │   │
-  └────────────────────────────────────────────────┼───┘
-                                                   │ SSH
-          ┌────────────────────────────────────────┼──────────────┐
-          │                                        ▼              │
-          │  VM 1 – Central Hub                                   │
-          │  ┌──────────────────────────────────────────────┐    │
-          │  │  brane-api  brane-drv  brane-plr  ScyllaDB   │    │
-          │  └──────────────────────────────────────────────┘    │
-          │          ▲ mTLS (port 50051/50052)                    │
-          │  VM 2 – Worker Node 1                                 │
-          │  ┌─────────────────────────────┐                     │
-          │  │  brane-worker  brane-chk    │                     │
-          │  └─────────────────────────────┘                     │
-          │  VM 3 – Worker Node 2                                 │
-          │  ┌─────────────────────────────┐                     │
-          │  │  brane-worker  brane-chk    │                     │
-          │  └─────────────────────────────┘                     │
-          └───────────────────────────────────────────────────────┘
+├── k8s-deployment/         # Kubernetes/Helm deployment (work in progress)
+├── frontend/               # Streamlit management console
+├── scripts/                # Interactive helper suite (entry point: brane_main.sh)
+├── packages/               # Brane packages (built locally, ignored by git)
+├── datasets/               # Datasets used by workflows (ignored by git)
+├── policies/               # eFLINT policy files
+├── certs/                  # Domain certificates (ignored by git)
+├── policy_tokens/          # Policy expert JWT tokens (ignored by git)
+└── .gitignore
 ```
 
 ---
@@ -62,15 +33,12 @@ brane-deployment/
 - Python 3.10+ (for the Streamlit frontend)
 - Docker installed on all target VMs (handled by Ansible)
 
-### Step 1 – Prepare the control node
+### Step 1 — Clone and configure the inventory
 
-Follow [README-control-node](README-control-node) to understand the expected directory layout on the central hub VM.
-
-### Step 2 – Prepare worker nodes
-
-Follow [README-worker-node](README-worker-node) for certificate and configuration steps on each worker VM.
-
-### Step 3 – Configure the Ansible inventory
+```bash
+git clone https://github.com/AdamBelloum/brane-deployment.git
+cd brane-deployment
+```
 
 Edit `docker-deployment/inventories/production/hosts.ini`:
 
@@ -85,16 +53,28 @@ worker-vm-3 ansible_host=<WORKER2_IP> node_ip=<WORKER2_IP> location_id=client-no
 
 Set `brane_user_home` in `docker-deployment/group_vars/all.yml` to match the remote user's home directory.
 
-### Step 4 – Run the deployment
+### Step 2 — Launch the helper
+
+```bash
+bash scripts/brane_main.sh
+```
+
+The helper reads `hosts.ini` automatically and presents a role-based menu:
+
+- **User** — manage packages, certificates, and run workflows
+- **Admin** — deploy and manage the Brane infrastructure via Ansible
+- **Policy Manager** — add and activate eFLINT domain policies
+
+### Step 3 — Or run Ansible directly
 
 ```bash
 cd docker-deployment
-pip install -r requirements.txt          # ansible + plugins
+pip install -r requirements.txt
 
-# Full deployment (all stages)
+# Full deployment
 ansible-playbook -i inventories/production/hosts.ini site.yml
 
-# Or step by step using tags:
+# Step by step
 ansible-playbook -i inventories/production/hosts.ini site.yml --tags prerequisites
 ansible-playbook -i inventories/production/hosts.ini site.yml --tags branectl
 ansible-playbook -i inventories/production/hosts.ini site.yml --tags workers
@@ -104,7 +84,7 @@ ansible-playbook -i inventories/production/hosts.ini site.yml --tags start
 ansible-playbook -i inventories/production/hosts.ini site.yml --tags smoke
 ```
 
-### Step 5 – Optional: launch the Streamlit frontend
+### Step 4 — Optional: Streamlit frontend
 
 ```bash
 cd frontend
@@ -115,59 +95,65 @@ streamlit run homepage.py
 
 See [frontend/README.md](frontend/README.md) for configuration details.
 
-### Step 6 – Optional: interactive helper script
+---
 
-```bash
-# Configure once (copy and edit the example)
-cp scripts/.brane_helper.env.example scripts/.brane_helper.env
-$EDITOR scripts/.brane_helper.env
+## Architecture
 
-# Launch the interactive menu
-bash scripts/brane_helper.sh
 ```
-
-See [scripts/README.md](scripts/README.md) for details.
+  ┌──────────────────────────────────────────────────────┐
+  │  Control Machine  (your laptop)                      │
+  │                                                      │
+  │  scripts/brane_main.sh  (interactive helper)    ─┐  │
+  │  docker-deployment/site.yml  (Ansible)           │  │
+  │  frontend/  (Streamlit GUI)                      │  │
+  └──────────────────────────────────────────────────┼──┘
+                                                     │ SSH
+        ┌────────────────────────────────────────────┼────────────┐
+        │                                            ▼            │
+        │  VM 1 – Central Hub                                     │
+        │  ┌────────────────────────────────────────────────┐    │
+        │  │  brane-api  brane-drv  brane-plr  ScyllaDB     │    │
+        │  └────────────────────────────────────────────────┘    │
+        │          ▲ mTLS (port 50051/50052)                      │
+        │  VM 2 – Worker Node 1                                   │
+        │  ┌──────────────────────────────┐                      │
+        │  │  brane-job  brane-chk        │                      │
+        │  └──────────────────────────────┘                      │
+        │  VM 3 – Worker Node 2                                   │
+        │  ┌──────────────────────────────┐                      │
+        │  │  brane-job  brane-chk        │                      │
+        │  └──────────────────────────────┘                      │
+        └─────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Network ports
 
-| Direction | Source            | Destination | Port  | Purpose                          |
-|-----------|-------------------|-------------|-------|----------------------------------|
-| Inbound   | Ansible ctrl node | All VMs     | 22    | SSH / Ansible                    |
-| Inbound   | Admin / CI        | Central VM  | 50051 | Brane registry (package push)    |
-| Inbound   | Worker VMs        | Central VM  | 50051 | Workers connecting to central    |
-| Inbound   | Central + Workers | Worker VMs  | 50052 | Inter-worker data transfer/proxy |
-| Outbound  | All VMs           | Internet    | 80/443| Docker image pulls, binary DL    |
-
----
-
-## Security notes
-
-- CA private key (`ca-key.pem`) is generated on the central hub and **purged** from worker nodes and the control machine immediately after certificate signing. See [docker-deployment/README.md](docker-deployment/README.md) for the full key lifecycle.
-- **Never commit** private keys, `.pem` files, or host-specific `.env` files. They are covered by `.gitignore`.
-- For production use, consider Ansible Vault for any secrets that must be versioned.
+| Direction | Source | Destination | Port | Purpose |
+|---|---|---|---|---|
+| Inbound | Control machine | All VMs | 22 | SSH / Ansible |
+| Inbound | Admin / CI | Central VM | 50051 | Brane registry |
+| Inbound | Worker VMs | Central VM | 50051 | Workers → central |
+| Inbound | Central + Workers | Worker VMs | 50052 | Inter-worker transfer |
+| Outbound | All VMs | Internet | 80/443 | Docker image pulls |
 
 ---
 
 ## Components
 
-| Component           | Status        | Description                                  |
-|---------------------|---------------|----------------------------------------------|
-| `docker-deployment` |  Active      | Ansible roles for bare-Docker Brane cluster  |
-| `frontend`          |  Active      | Streamlit GUI control plane                  |
-| `scripts`           |  Active      | Helper scripts, smoke tests, templates       |
-| `k8-deployment`     |  In progress | Kubernetes / Helm deployment (not yet ready) |
+| Component | Status | Description |
+|---|---|---|
+| `docker-deployment` | Active | Ansible deployment on bare Docker |
+| `frontend` | Active | Streamlit GUI control plane |
+| `scripts` | Active | Role-based interactive helper suite |
+| `k8s-deployment` | Work in progress | Kubernetes / Helm deployment |
 
 ---
 
-## Contributing
+## Security notes
 
-1. Fork the repo and create a feature branch.
-2. Run linters locally before pushing:
-   ```bash
-   cd docker-deployment && bash test-lint.sh
-   shellcheck scripts/*.sh
-   ```
-3. Open a pull request against `main`.
+- CA private key (`ca-key.pem`) is generated on the central hub and purged immediately after certificate signing.
+- **Never commit** private keys, `.pem` files, or `.env` files — covered by `.gitignore`.
+- `certs/` and `policy_tokens/` are local-only and git-ignored.
 
