@@ -71,9 +71,10 @@ def render_data_policy():
     st.divider()
 
     # Target worker nodes mapping configuration
+    
     worker_nodes = {
-        "Client Node 1 (worker-vm-2)": "http://145.100.135.172",
-        "Client Node 2 (worker-vm-3)": "http://145.100.135.241"
+    "Client Node 1 (worker-vm-2)": "",
+    "Client Node 2 (worker-vm-3)": ""
     }
 
     # Initialize persistent workspace form selections

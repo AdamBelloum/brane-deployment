@@ -131,7 +131,8 @@ if count > 10 {
     with col_net1:
         exec_target = st.radio("Target Routing Space Environment:", ["Remote Instance Mode", "Local Sandboxed Mode"], horizontal=True, key="exec_target_radio")
     with col_net2:
-        instance_ip = st.text_input("Central Hub Instance URL:", value="145.100.135.209", key="instance_ip_input")
+        #instance_ip = st.text_input("Central Instance URL:", value="145.100.135.209", key="instance_ip_input")
+         instance_ip = st.text_input("Central Instance URL:", value="", placeholder="e.g. http://145.100.135.209", key="instance_ip_input")
     with col_net3:
         instance_port = st.text_input("Engine Port Configuration:", value="50053", key="instance_port_input")
 

@@ -22,7 +22,8 @@ load_config_soft "${SCRIPT_DIR}"
 PACKAGES_DIR="${REPO_ROOT}/packages"
 CERTS_DIR="${REPO_ROOT}/certs"
 DATASETS_DIR="${REPO_ROOT}/datasets"
-TOKEN_DIR="${REPO_ROOT}/policy_token"
+TOKEN_DIR="${REPO_ROOT}/policy_tokens"
+POLICIES_DIR="${REPO_ROOT}/policies"
 
 # ==========================================
 # INVENTORY PARSER (same logic as policy helper)
@@ -76,6 +77,7 @@ _build_snapshot() {
     SNAP_CERTS=false;     SNAP_CERT_COUNT=0
     SNAP_DATASETS=false;  SNAP_DS_COUNT=0
     SNAP_TOKENS=false;    SNAP_TOK_COUNT=0
+    SNAP_POLICIES=false; SNAP_POL_COUNT=0
 
     if [[ -d "${PACKAGES_DIR}" ]]; then
         SNAP_PACKAGES=true
@@ -92,6 +94,10 @@ _build_snapshot() {
     if [[ -d "${TOKEN_DIR}" ]]; then
         SNAP_TOKENS=true
         SNAP_TOK_COUNT=$(find "${TOKEN_DIR}" -maxdepth 1 -name "*.json" -type f 2>/dev/null | wc -l | tr -d ' ')
+    fi
+    if [[ -d "${POLICIES_DIR}" ]]; then
+    	SNAP_POLICIES=true
+    	SNAP_POL_COUNT=$(find "${POLICIES_DIR}" -maxdepth 1 -name "*.eflint" -type f 2>/dev/null | wc -l | tr -d ' ')
     fi
 
     # Brane instance
