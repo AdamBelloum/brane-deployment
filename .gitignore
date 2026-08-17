@@ -1,7 +1,6 @@
 # ──────────────────────────────────────────
 # Secrets & local config  (NEVER commit these)
 # ──────────────────────────────────────────
-scripts/.brane_helper.env
 *.env
 !*.env.example
 
@@ -16,6 +15,7 @@ worker-key.pem
 
 # contain specific IP address
 hosts.ini
+!hosts.ini.template
 
 # Ansible Vault files
 *.vault.yml
