@@ -84,3 +84,13 @@ Thumbs.db
 *.old
 *.back
 NOTES
+
+# Runtime directories — keep structure, ignore contents
+datasets/*
+!datasets/.gitkeep
+packages/*
+!packages/.gitkeep
+policies/*
+!policies/.gitkeep
+policy_tokens/*
+!policy_tokens/.gitkeep
