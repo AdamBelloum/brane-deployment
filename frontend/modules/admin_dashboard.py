@@ -514,6 +514,7 @@ def _render_role_switching() -> None:
         """)
         if st.button("👤 Switch to User Dashboard", key="btn_switch_user", type="primary"):
             st.session_state.current_role = "user"
+            st.session_state.requested_page = "user_overview"
             st.rerun()
     
     with col2:
@@ -526,6 +527,7 @@ def _render_role_switching() -> None:
         """)
         if st.button("🔐 Switch to Policy Manager", key="btn_switch_policy", type="primary"):
             st.session_state.current_role = "policy_manager"
+            st.session_state.requested_page = "policy_overview"
             st.rerun()
     
     with col3:

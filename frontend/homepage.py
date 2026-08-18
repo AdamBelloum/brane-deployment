@@ -80,52 +80,139 @@ from modules.policy_manager_dashboard import render_policy_manager_dashboard
 from modules.admin_dashboard import render_admin_dashboard
 
 # ===================================================================
-# 🗺️ CONTROLLER NAVIGATION & ROUTING
+# 🗺️ ROLE-ORIENTED NAVIGATION & ROUTING
 # ===================================================================
-st.sidebar.title("🧬 Brane Control Center")
 
-page_selection = st.sidebar.radio(
-    "Navigation Menus",
-    [
-        "Dashboard Home", 
-        "Cluster Configurator", 
-        "Deploy Infrastructure", 
-        "Deploy Packages",
-        "Deploy Brane CLI",
-        "Editor Brane Scripts",
-        "Policy Manager",
-        "User Workspace",
-        "Admin Workspace",
-        "Task History"
-    ]
-)
+PAGES = {
+    "home": {
+        "label": "Home",
+        "role": None,
+        "render": render_home_dashboard,
+    },
+    "admin_overview": {
+        "label": "Admin overview",
+        "role": "admin",
+        "render": render_admin_dashboard,
+    },
+    "admin_infrastructure": {
+        "label": "Infrastructure",
+        "role": "admin",
+        "render": render_infra_deploy,
+    },
+    "admin_cluster": {
+        "label": "Cluster configuration",
+        "role": "admin",
+        "render": render_cluster_config,
+    },
+    "admin_packages": {
+        "label": "Packages & registry",
+        "role": "admin",
+        "render": render_packages_deploy,
+    },
+    "admin_cli": {
+        "label": "CLI & local tools",
+        "role": "admin",
+        "render": render_cli_panel,
+    },
+    "policy_overview": {
+        "label": "Policy overview",
+        "role": "policy_manager",
+        "render": render_policy_manager_dashboard,
+    },
+    "user_overview": {
+        "label": "User overview",
+        "role": "user",
+        "render": render_user_dashboard,
+    },
+    "user_workflows": {
+        "label": "Workflow editor",
+        "role": "user",
+        "render": render_brane_scripts,
+    },
+    "task_history": {
+        "label": "Task history",
+        "role": None,
+        "render": render_task_history,
+    },
+}
 
-st.sidebar.divider()
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "home"
 
-# Render Global Active Indicator Badges in the Sidebar
+# Dashboard actions may request a navigation destination before rerunning.
+requested_page = st.session_state.pop("requested_page", None)
+if requested_page in PAGES:
+    st.session_state.current_page = requested_page
+
+if st.session_state.current_page not in PAGES:
+    st.session_state.current_page = "home"
+
+current_page = st.session_state.current_page
+current_role = PAGES[current_page]["role"]
+if current_role:
+    st.session_state.current_role = current_role
+
+
+def render_navigation_button(page_id: str) -> None:
+    """Render one sidebar navigation action and preserve the selected page."""
+    page = PAGES[page_id]
+    selected = page_id == st.session_state.current_page
+    label = f"● {page['label']}" if selected else page["label"]
+
+    if st.button(
+        label,
+        key=f"nav_{page_id}",
+        use_container_width=True,
+        type="primary" if selected else "secondary",
+    ):
+        st.session_state.current_page = page_id
+        st.rerun()
+
+
+with st.sidebar:
+    st.title("🧬 Brane Control Center")
+    st.caption("Choose a workspace based on the task you need to perform.")
+
+    render_navigation_button("home")
+
+    with st.expander(
+        "⚙️ Administration",
+        expanded=current_page.startswith("admin_"),
+    ):
+        st.caption("Operate and maintain the Brane deployment.")
+        for page_id in (
+            "admin_overview",
+            "admin_infrastructure",
+            "admin_cluster",
+            "admin_packages",
+            "admin_cli",
+        ):
+            render_navigation_button(page_id)
+
+    with st.expander(
+        "🔐 Policy Management",
+        expanded=current_page.startswith("policy_"),
+    ):
+        st.caption("Manage data-access policies and their lifecycle.")
+        render_navigation_button("policy_overview")
+
+    with st.expander(
+        "👤 User Workspace",
+        expanded=current_page.startswith("user_"),
+    ):
+        st.caption("Create, submit, and follow Brane workflows.")
+        for page_id in ("user_overview", "user_workflows"):
+            render_navigation_button(page_id)
+
+    st.divider()
+    render_navigation_button("task_history")
+    st.divider()
+
+# Active operations remain visible no matter which workspace is open.
 render_activity_sidebar()
 
-# Route the UI Content based on Sidebar Selection
-if page_selection == "Dashboard Home":
-    render_home_dashboard()
-elif page_selection == "Cluster Configurator":
-    render_cluster_config()
-elif page_selection == "Deploy Infrastructure":
-    render_infra_deploy()
-elif page_selection == "Deploy Packages":
-    render_packages_deploy()
-elif page_selection == "Deploy Brane CLI":
-    render_cli_panel()
-elif page_selection == "Editor Brane Scripts":
-    render_brane_scripts()
-elif page_selection == "Policy Manager":
-    render_policy_manager_dashboard()
-elif page_selection == "User Workspace":
-    render_user_dashboard()
-elif page_selection == "Admin Workspace":
-    render_admin_dashboard()
-elif page_selection == "Task History":
-    render_task_history()
+# Render the selected workspace.
+PAGES[st.session_state.current_page]["render"]()
 
 
 # ===================================================================
