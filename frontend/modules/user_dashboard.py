@@ -183,23 +183,45 @@ def _render_instance_management() -> None:
             submitted = st.form_submit_button("Add Instance")
             
             if submitted:
-                if host and instance_name:
-                    try:
-                        result = subprocess.run(
-                            ["brane", "instance", "add", host, 
-                             "--name", instance_name, "--use", "--unchecked", "--force"],
-                            capture_output=True,
-                            text=True,
-                            timeout=10,
-                        )
-                        if result.returncode == 0:
-                            st.success(f"Instance '{instance_name}' added successfully!")
-                        else:
-                            st.error(f"Failed to add instance: {result.stderr}")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-                else:
+                if not host or not instance_name:
                     st.error("Both fields are required")
+                else:
+                    task, error = task_manager.start_task(
+                        role="user",
+                        operation="instance_add",
+                        label=f"Add instance: {instance_name}",
+                        command=[
+                            "brane",
+                            "instance",
+                            "add",
+                            host,
+                            "--name",
+                            instance_name,
+                            "--use",
+                            "--unchecked",
+                            "--force",
+                        ],
+                        cwd=os.path.dirname(PACKAGES_DIR),
+                        metadata={
+                            "host": host,
+                            "instance_name": instance_name,
+                            "unchecked": True,
+                            "force": True,
+                            "select_after_add": True,
+                        },
+                        lock_name="instance-management",
+                    )
+                    if error:
+                        st.error(error)
+                    else:
+                        st.session_state.user_instance_add_task_id = task["id"]
+                        st.success("Instance creation started in the background.")
+                        st.rerun()
+
+    instance_add_task_id = st.session_state.get("user_instance_add_task_id")
+    if instance_add_task_id:
+        render_task_monitor(instance_add_task_id, title="Instance creation progress")
+
 
 
 def _render_package_management() -> None:
