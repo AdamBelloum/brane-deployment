@@ -1,4 +1,4 @@
-from modules.task_ui import render_activity_sidebar
+from modules.task_ui import render_activity_sidebar, render_task_history
 import streamlit as st
 
 # ===================================================================
@@ -93,7 +93,8 @@ page_selection = st.sidebar.radio(
         "Deploy Brane CLI",
         "Editor Brane Scripts",
         "Editor Data Policy",
-        "User Workspace"
+        "User Workspace",
+        "Task History"
     ]
 )
 
@@ -119,6 +120,8 @@ elif page_selection == "Editor Data Policy":
     render_data_policy()
 elif page_selection == "User Workspace":
     render_user_dashboard()
+elif page_selection == "Task History":
+    render_task_history()
 
 
 # ===================================================================
