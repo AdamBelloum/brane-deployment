@@ -1,8 +1,13 @@
 import os
 import platform
 import subprocess
+import sys
 import streamlit as st
 from pathlib import Path
+
+from modules import task_manager
+from modules.task_ui import render_task_monitor
+from modules.config import REPO_ROOT
 
 def render_cli_panel():
     st.title("💻 Brane CLI Environment Manager & Command Reference")
@@ -59,135 +64,37 @@ def render_cli_panel():
         st.markdown(f"**Nightly Release Endpoint URL:** `{download_url}`")
         
         if st.button("Download & Register Local Binary", type="primary", key="cli_download_btn"):
-            log_area = st.empty()
-            full_log = "=== Launching Sudo-less Client Binary Provision Loop ===\n"
-            log_area.code(full_log)
-            try:
-                if detected_os in ["Linux", "Darwin"]:
-                    # Create ~/.local/bin safely within the user's home context
-                    local_bin_dir = Path.home() / ".local" / "bin"
-                    local_bin_dir.mkdir(parents=True, exist_ok=True)
-                    target_path = local_bin_dir / "brane"
-                    
-                    full_log += f"Creating local binary path: {local_bin_dir}\n"
-                    full_log += f"Streaming payload via curl...\n"
-                    log_area.code(full_log)
-                    
-                    # Direct download into user-space via absolute string paths
-                    subprocess.run(["curl", "-L", "-o", str(target_path), download_url], check=True)
-                    subprocess.run(["chmod", "+x", str(target_path)], check=True)
-                    
-                    full_log += f"✓ Binary deployed seamlessly to {target_path}\n"
-                    full_log += f"⚠️ Note: Ensure '{local_bin_dir}' is added to your system $PATH configuration.\n"
-                    
-                elif detected_os == "Windows":
-                    target_path = os.path.expanduser("~\\AppData\\Local\\Microsoft\\WindowsApps\\brane.exe")
-                    subprocess.run(["curl", "-L", "-o", target_path, download_url], check=True)
-                    full_log += f"✓ Binary deployed to {target_path}\n"
-                    
-                full_log += "\n=== Testing Installation Integrity ===\n"
-                log_area.code(full_log)
-                
-                # Point directly to the newly installed binary to ensure validation works even if $PATH hasn't reloaded
-                executable_check = str(target_path) if detected_os in ["Linux", "Darwin"] else "brane"
-                v_proc = subprocess.Popen([executable_check, "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                for line in iter(v_proc.stdout.readline, ''):
-                    full_log += line
-                    log_area.code(full_log)
-                v_proc.stdout.close()
-                v_proc.wait()
-                st.success("🎉 Brane CLI successfully installed without root requirements!")
-            except Exception as e:
-                st.error(f"Installation interrupted: {str(e)}")
+            task, error = task_manager.start_task(
+                role="user",
+                operation="cli_install",
+                label=f"Install Brane CLI: {selected_platform}",
+                command=[
+                    sys.executable,
+                    str(Path(__file__).with_name("cli_install_task.py")),
+                    "--download-url",
+                    download_url,
+                ],
+                cwd=REPO_ROOT,
+                metadata={
+                    "platform_variant": selected_platform,
+                    "download_url": download_url,
+                },
+                lock_name="cli-install",
+            )
+            if error:
+                st.error(error)
+            else:
+                st.session_state.cli_install_task_id = task["id"]
+                st.success("Brane CLI installation started in the background.")
+                st.rerun()
 
-                v_proc = subprocess.Popen([executable_check, "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                for line in iter(v_proc.stdout.readline, ''):
-                    full_log += line
-                    log_area.code(full_log)
-                v_proc.stdout.close()
-                v_proc.wait()
+        cli_install_task_id = st.session_state.get("cli_install_task_id")
+        if cli_install_task_id:
+            render_task_monitor(
+                cli_install_task_id,
+                title="Brane CLI installation progress",
+            )
 
-                # ===================================================================
-                # 🎯 INSERT THE NEW CODE STATE HERE (Replaces your original st.success)
-                # ===================================================================
-                st.success("🎉 Brane CLI binary successfully installed and verified in user-space!")
-
-                st.markdown("""
-                ### 🚀 Next Step: Verify Cluster Integration
-                To ensure your local `brane` CLI tool can correctly compile, register, and talk to your active Brane orchestration hub, please use the integration workspace:
-
-                1. Navigate to the **"Deploy Packages"** section using the sidebar menu.
-                2. Switch to the **"Run Automated System Smoke Test"** tab.
-                3. Trigger the **Hello World Integration Test** to verify container orchestration end-to-end.
-                """)
-
-            except Exception as e:
-                st.error(f"Installation interrupted: {str(e)}")
-    # ==========================================
-    # TAB 2: USER CLI COMMAND PANEL (`brane`)
-    # ==========================================
-    with tab_user_cli:
-        st.subheader("🧑‍🔬 Developer & Data Scientist Command Reference")
-        st.write("Manage packages, run workflows, and inspect active instances.")
-        
-        st.markdown("### ⚡ Quick Diagnostic Queries")
-        col_u1, col_u2, col_u3 = st.columns(3)
-        
-        def run_check_cmd(cmd_list):
-            # Dynamic path expansion for runtime interactive checks
-            if platform.system() in ["Linux", "Darwin"]:
-                user_binary = str(Path.home() / ".local" / "bin" / cmd_list[0])
-                if os.path.exists(user_binary):
-                    cmd_list[0] = user_binary
-            
-            st.info(f"Running: `{' '.join(cmd_list)}`")
-            p = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            out, _ = p.communicate()
-            st.code(out if out.strip() else "Command completed with empty stdout.", language="bash")
-
-        with col_u1:
-            if st.button("📋 List Local Packages (`brane package list`)", key="cli_pkg_list_btn"):
-                run_check_cmd(["brane", "package", "list"])
-        with col_u2:
-            if st.button("🌐 Show Current Connected Instance", key="cli_instance_btn"):
-                run_check_cmd(["brane", "instance"])
-        with col_u3:
-            if st.button("📊 List Remote Datasets (`brane data list`)", key="cli_data_list_btn"):
-                run_check_cmd(["brane", "data", "list"])
-
-        st.divider()
-        
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            st.markdown("""
-            #### 📦 Package Commands
-            | Command | Description |
-            | :--- | :--- |
-            | `brane package build <PATH>` | Build package from a `container.yml` |
-            | `brane package list` | List local packages |
-            | `brane package test <NAME>` | Test a package function locally |
-            | `brane package push <NAME>` | Push a package to a remote instance |
-            | `brane package search` | List packages on the remote instance |
-            | `brane package remove <NAME>` | Remove a local package |
-            """)
-        with col_t2:
-            st.markdown("""
-            #### 📜 Workflow & Instance Commands
-            | Command | Description |
-            | :--- | :--- |
-            | `brane workflow repl [--remote URL]` | Start interactive BraneScript REPL |
-            | `brane workflow run <FILE> [--remote URL]` | Execute a workflow from a `.bs` file |
-            | `brane login <URL> --username <NAME>` | Set the active instance |
-            | `brane data download <NAME>` | Download a dataset locally |
-            """)
-
-    # ==========================================
-    # TAB 3: ADMIN CLI COMMAND PANEL (`branectl`)
-    # ==========================================
-    with tab_admin_cli:
-        st.subheader("🛠️ Node Infrastructure & Administrative Management Panel")
-        st.write("Download node infrastructure service packages, generate certificates, secrets, and manage cluster statuses.")
-        
         st.markdown("### 🔌 Core Service Direct Switches")
         col_adm1, col_adm2, col_adm3 = st.columns(3)
         target_node_type = st.selectbox("Select Target Cluster Service Type Profile:", ["central", "worker", "proxy", "auxillary"], key="cli_node_type_select")
