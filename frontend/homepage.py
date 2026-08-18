@@ -1,3 +1,4 @@
+from modules.task_ui import render_activity_sidebar
 import streamlit as st
 
 # ===================================================================
@@ -97,8 +98,7 @@ page_selection = st.sidebar.radio(
 st.sidebar.divider()
 
 # Render Global Active Indicator Badges in the Sidebar
-if st.session_state.global_pkg_status == "running" or st.session_state.global_infra_status == "running":
-    st.sidebar.warning("⚡ Background Deployment Active...")
+render_activity_sidebar()
 
 # Route the UI Content based on Sidebar Selection
 if page_selection == "Dashboard Home":

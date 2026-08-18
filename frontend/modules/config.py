@@ -24,6 +24,16 @@ _MODULES_DIR = os.path.dirname(os.path.abspath(__file__))
 _FRONTEND_DIR = os.path.dirname(_MODULES_DIR)
 REPO_ROOT = os.path.dirname(_FRONTEND_DIR)
 
+# Local, Git-ignored Streamlit task state and logs.
+FRONTEND_RUNTIME_DIR = Path(_FRONTEND_DIR) / "runtime"
+
+# Repository-root resources, shared by the role workspaces.
+PACKAGES_DIR = Path(REPO_ROOT) / "packages"
+CERTS_DIR = Path(REPO_ROOT) / "certs"
+DATASETS_DIR = Path(REPO_ROOT) / "datasets"
+POLICIES_DIR = Path(REPO_ROOT) / "policies"
+POLICY_TOKENS_DIR = Path(REPO_ROOT) / "policy_tokens"
+
 # ── Ansible / docker-deployment paths ────────────────────────────────────────
 ANSIBLE_DIR = os.environ.get(
     "BRANE_ANSIBLE_DIR",
