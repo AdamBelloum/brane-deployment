@@ -46,7 +46,6 @@
 # =============================================================
 
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -435,126 +434,133 @@ def _render_policy_upload() -> None:
 
 
 def _render_policy_activation() -> None:
-    """Render policy activation section."""
+    """Render task-backed policy version listing and activation."""
     st.subheader("✅ Activate Policy Version")
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
+
+    token_column, connection_column = st.columns([1, 1])
+
+    with token_column:
         st.markdown("#### Select Token")
         tokens = list_policy_tokens()
         if not tokens:
-            st.error("No tokens found")
+            st.error("No tokens found in policy_tokens/.")
             return
-        
-        selected_token = st.selectbox("Policy token", tokens, key="token_select_activate")
+
+        selected_token = st.selectbox(
+            "Policy token",
+            tokens,
+            key="token_select_activate",
+        )
         token_path = os.path.join(POLICY_TOKENS_DIR, selected_token)
-        
         token_status = _check_token_expiry(token_path)
+
         if token_status["error"] or not token_status["valid"]:
-            st.error("Token is not valid")
+            st.error("Selected token is not valid.")
             return
-        
-        st.success(f"✅ Token valid")
-    
-    with col2:
+
+        st.success("✅ Token valid")
+
+    with connection_column:
         st.markdown("#### Worker Node Connection")
         workers = _get_worker_hosts()
         if workers:
-            worker_host = st.selectbox("Worker host", workers, key="worker_select_activate")
-        else:
-            worker_host = st.text_input("Worker IP/hostname", key="worker_input_activate")
-        
-        ssh_user = st.text_input("SSH user", value="ubuntu", key="ssh_user_activate")
-        brane_port = st.text_input("brane-chk port", value="50051", key="port_activate")
-    
-    st.divider()
-    
-    st.markdown("#### Available Policy Versions")
-    
-    if st.button("📋 List Policy Versions", key="btn_list_versions"):
-        try:
-            with open(token_path, 'r') as f:
-                token_data = json.load(f)
-                token = token_data.get('token') or token_data.get('access_token') or list(token_data.values())[0]
-            
-            # List policies via curl
-            cmd = [
-                "ssh", "-o", "StrictHostKeyChecking=no",
-                f"{ssh_user}@{worker_host}",
-                f"curl -s -H 'Authorization: Bearer {token}' http://localhost:{brane_port}/v1/policies"
-            ]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=10,
+            worker_host = st.selectbox(
+                "Worker host",
+                workers,
+                key="worker_select_activate",
             )
-            
-            if result.returncode == 0 and result.stdout:
-                st.code(result.stdout, language="json")
-            else:
-                st.info("No policies found or could not retrieve list")
-        
-        except Exception as e:
-            st.error(f"Error: {e}")
-    
+        else:
+            worker_host = st.text_input(
+                "Worker IP/hostname",
+                key="worker_input_activate",
+            )
+
+        ssh_user = st.text_input(
+            "SSH user",
+            value="ubuntu",
+            key="ssh_user_activate",
+        )
+        brane_port = st.text_input(
+            "brane-chk port",
+            value="50051",
+            key="port_activate",
+        )
+
+    def start_lifecycle_task(operation: str, version_id: str | None = None) -> None:
+        if not worker_host or not ssh_user or not brane_port:
+            st.error("Worker host, SSH user, and brane-chk port are required.")
+            return
+
+        command = [
+            sys.executable,
+            str(Path(__file__).with_name("policy_lifecycle_task.py")),
+            operation,
+            "--token-path",
+            token_path,
+            "--worker-host",
+            worker_host,
+            "--ssh-user",
+            ssh_user,
+            "--brane-port",
+            brane_port,
+        ]
+        if version_id:
+            command.extend(["--version-id", version_id])
+
+        label = (
+            f"List policies: {worker_host}"
+            if operation == "list"
+            else f"Activate policy {version_id}: {worker_host}"
+        )
+
+        task, error = start_task(
+            role="policy-manager",
+            operation=f"policy_{operation}",
+            label=label,
+            command=command,
+            cwd=REPO_ROOT,
+            metadata={
+                "worker_host": worker_host,
+                "ssh_user": ssh_user,
+                "brane_port": brane_port,
+                "version_id": version_id,
+            },
+            lock_name="policy-lifecycle",
+        )
+
+        if error:
+            st.error(error)
+        else:
+            st.session_state.policy_lifecycle_task_id = task["id"]
+            st.success("Policy lifecycle task started in the background.")
+            st.rerun()
+
     st.divider()
-    
+    st.markdown("#### Available Policy Versions")
+
+    if st.button("📋 List Policy Versions", key="btn_list_versions"):
+        start_lifecycle_task("list")
+
+    st.divider()
     st.markdown("#### Activate Version")
-    
-    version_id = st.text_input("Policy version ID to activate", key="version_id_input")
-    
+
+    version_id = st.text_input(
+        "Policy version ID to activate",
+        key="version_id_input",
+    )
+
     if st.button("✅ Activate Policy", key="btn_activate_policy", type="primary"):
         if not version_id:
-            st.error("Version ID required")
-            return
-        
-        with st.spinner("Activating policy..."):
-            try:
-                with open(token_path, 'r') as f:
-                    token_data = json.load(f)
-                    token = token_data.get('token') or token_data.get('access_token') or list(token_data.values())[0]
-                
-                cmd = [
-                    "ssh", "-o", "StrictHostKeyChecking=no",
-                    f"{ssh_user}@{worker_host}",
-                    f"curl -s -X POST -H 'Authorization: Bearer {token}' http://localhost:{brane_port}/v1/policies/{version_id}/activate"
-                ]
-                
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                
-                if result.returncode == 0:
-                    st.success(f"✅ Policy version {version_id} activated!")
-                    
-                    # Verify active policy
-                    st.markdown("#### Verification - Active Policy")
-                    verify_cmd = [
-                        "ssh", "-o", "StrictHostKeyChecking=no",
-                        f"{ssh_user}@{worker_host}",
-                        f"curl -s -H 'Authorization: Bearer {token}' http://localhost:{brane_port}/v1/policies/active | python3 -m json.tool"
-                    ]
-                    
-                    verify_result = subprocess.run(
-                        verify_cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                    )
-                    
-                    if verify_result.returncode == 0:
-                        st.code(verify_result.stdout, language="json")
-                else:
-                    st.error(f"Failed to activate policy: {result.stderr}")
-            
-            except Exception as e:
-                st.error(f"Error: {e}")
+            st.error("Policy version ID is required.")
+        else:
+            start_lifecycle_task("activate", version_id)
+
+    task_id = st.session_state.get("policy_lifecycle_task_id")
+    if task_id:
+        render_task_monitor(
+            task_id,
+            title="Policy lifecycle task progress",
+        )
 
 
 # =============================================================
