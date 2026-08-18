@@ -120,3 +120,38 @@ def get_brane_executable() -> str:
     # 5. Bare fallback — subprocess will raise FileNotFoundError with a clear message
     return "brane"
 
+
+
+# ── Repository resource discovery ────────────────────────────────────────────
+
+def list_packages() -> list[str]:
+    """Return package-directory names directly below the repository packages/ directory."""
+    if not PACKAGES_DIR.is_dir():
+        return []
+    return sorted(
+        entry.name
+        for entry in PACKAGES_DIR.iterdir()
+        if entry.is_dir() and not entry.name.startswith(".")
+    )
+
+
+def _list_resource_files(directory: Path) -> list[str]:
+    """Return non-hidden files below a repository resource directory."""
+    if not directory.is_dir():
+        return []
+
+    return sorted(
+        str(path.relative_to(directory))
+        for path in directory.rglob("*")
+        if path.is_file() and not any(part.startswith(".") for part in path.relative_to(directory).parts)
+    )
+
+
+def list_certs() -> list[str]:
+    """Return certificate-file paths relative to certs/."""
+    return _list_resource_files(CERTS_DIR)
+
+
+def list_datasets() -> list[str]:
+    """Return dataset-file paths relative to datasets/."""
+    return _list_resource_files(DATASETS_DIR)

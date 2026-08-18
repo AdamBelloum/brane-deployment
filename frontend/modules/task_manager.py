@@ -61,7 +61,7 @@ def start_task(
         task_store.update_task(task, status="failed", finished_at=task_store.now())
         active_lock = task_store.read_lock(lock_name)
         active_task_id = active_lock.get("task_id", "unknown") if active_lock else "unknown"
-        return None, f"Another infrastructure deployment is active (task: {active_task_id})."
+        return None, f"Another exclusive operation is already active (task: {active_task_id})."
 
     try:
         log_handle = Path(task["log_path"]).open("a", encoding="utf-8", buffering=1)

@@ -50,6 +50,9 @@ import subprocess
 import streamlit as st
 from typing import Optional, List
 
+from modules import task_manager
+from modules.task_ui import render_task_monitor
+
 from modules.config import (
     PACKAGES_DIR,
     CERTS_DIR,
@@ -278,24 +281,29 @@ def _render_workflow_execution() -> None:
         )
         if st.button("▶️ Run Locally", key="btn_run_local_wf"):
             wf_path = os.path.join(PACKAGES_DIR, selected_wf)
-            if os.path.exists(wf_path):
-                try:
-                    result = subprocess.run(
-                        ["brane", "workflow", "run", username, wf_path],
-                        capture_output=True,
-                        text=True,
-                        timeout=60,
-                    )
-                    if result.returncode == 0:
-                        st.success("Workflow executed successfully!")
-                        st.code(result.stdout, language="text")
-                    else:
-                        st.error(f"Execution failed: {result.stderr}")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-            else:
+            if not os.path.exists(wf_path):
                 st.error(f"Workflow not found: {wf_path}")
-    
+            else:
+                task, error = task_manager.start_task(
+                    role="user",
+                    operation="workflow_run_local",
+                    label=f"Local workflow: {selected_wf}",
+                    command=["brane", "workflow", "run", username, wf_path],
+                    cwd=os.path.dirname(PACKAGES_DIR),
+                    metadata={
+                        "mode": "local",
+                        "username": username,
+                        "workflow": selected_wf,
+                    },
+                    lock_name="workflow-execution",
+                )
+                if error:
+                    st.error(error)
+                else:
+                    st.session_state.user_local_workflow_task_id = task["id"]
+                    st.success("Local workflow started in the background.")
+                    st.rerun()
+
     with col2:
         st.markdown("#### Run Remotely")
         instances = _get_instances()
@@ -343,6 +351,11 @@ def _render_workflow_execution() -> None:
                     st.error(f"Workflow not found: {wf_path}")
         else:
             st.warning("No instances configured. Use Instance Management to add one.")
+
+
+    local_task_id = st.session_state.get("user_local_workflow_task_id")
+    if local_task_id:
+        render_task_monitor(local_task_id, title="Local workflow progress")
 
 
 def _render_certificate_management() -> None:
