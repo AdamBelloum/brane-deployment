@@ -15,9 +15,10 @@
 
 import os
 import subprocess
+import sys
+from pathlib import Path
 import streamlit as st
 import zipfile
-import json
 import re
 import io
 from typing import List, Dict, Tuple
@@ -35,35 +36,13 @@ from modules.config import (
     list_packages,
     list_certs,
     list_policies,
+    list_policy_tokens,
 )
 
 
 # =============================================================
 # HELPER FUNCTIONS
 # =============================================================
-
-def _run_command(cmd: List[str], timeout: int = 60, cwd: str = None) -> Tuple[bool, str]:
-    """Run a command and return (success, output)."""
-    try:
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            timeout=timeout,
-            cwd=cwd
-        )
-        return result.returncode == 0, result.stdout + result.stderr
-    except subprocess.TimeoutExpired:
-        return False, "Command timed out"
-    except Exception as e:
-        return False, str(e)
-
-
-def _clean_ansi_codes(text: str) -> str:
-    """Remove ANSI color codes from text."""
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', text)
-
 
 def _get_deployment_tags() -> Dict[str, str]:
     """Get mapping of deployment tag names to their descriptions."""
@@ -143,30 +122,6 @@ def _create_certs_zip(domain: str) -> Tuple[bool, bytes, str]:
     
     except Exception as e:
         return False, b"", str(e)
-
-
-def _generate_policy_token(manager_name: str, domain_id: str, validity: str = "30d") -> Tuple[bool, str]:
-    """Generate a policy expert token."""
-    try:
-        # Generate token using branectl
-        cmd = [
-            "branectl", "generate", "policy_token",
-            manager_name, domain_id, validity
-        ]
-        success, output = _run_command(cmd, timeout=30)
-        
-        if success:
-            # Try to parse the token from output
-            try:
-                token_data = json.loads(output)
-                return True, json.dumps(token_data, indent=2)
-            except:
-                return True, output
-        else:
-            return False, output
-    
-    except Exception as e:
-        return False, str(e)
 
 
 # =============================================================
@@ -472,27 +427,71 @@ def _render_manage_certs_tokens() -> None:
             st.write("")  # Spacer
         
         if st.button("🔑 Generate Token", key="btn_gen_token", type="primary"):
-            if manager_name and domain_id:
-                with st.spinner("Generating token..."):
-                    success, token_output = _generate_policy_token(manager_name, domain_id, validity)
-                    
-                    if success:
-                        st.success(f"✅ Token generated for {manager_name}")
-                        st.code(token_output, language="json")
-                        
-                        # Offer download
-                        token_filename = f"policy_token_{manager_name}_{domain_id}.json"
-                        st.download_button(
-                            label=f"⬇️ Download {token_filename}",
-                            data=token_output,
-                            file_name=token_filename,
-                            mime="application/json",
-                            key="download_token_button"
-                        )
-                    else:
-                        st.error(f"❌ Failed to generate token: {token_output}")
+            if not manager_name or not domain_id:
+                st.error("Manager name and domain ID are required.")
             else:
-                st.error("Manager name and domain ID are required")
+                task, error = start_task(
+                    role="admin",
+                    operation="policy_token_generate",
+                    label=f"Generate policy token: {manager_name} for {domain_id}",
+                    command=[
+                        sys.executable,
+                        str(Path(__file__).with_name("policy_token_generate_task.py")),
+                        "--manager-name",
+                        manager_name,
+                        "--domain-id",
+                        domain_id,
+                        "--validity",
+                        validity,
+                        "--token-dir",
+                        str(POLICY_TOKENS_DIR),
+                    ],
+                    cwd=REPO_ROOT,
+                    metadata={
+                        "manager_name": manager_name,
+                        "domain_id": domain_id,
+                        "validity": validity,
+                    },
+                    lock_name="policy-token-generate",
+                )
+                if error:
+                    st.error(error)
+                else:
+                    st.session_state.policy_token_generate_task_id = task["id"]
+                    st.success("Secure policy-token generation started in the background.")
+                    st.rerun()
+
+        token_task_id = st.session_state.get("policy_token_generate_task_id")
+        if token_task_id:
+            render_task_monitor(
+                token_task_id,
+                title="Policy-token generation progress",
+            )
+
+        st.divider()
+        st.markdown("#### Download Generated Token")
+
+        token_files = list_policy_tokens()
+        if not token_files:
+            st.info("No generated policy-token files are available yet.")
+        else:
+            selected_token_file = st.selectbox(
+                "Stored token file",
+                token_files,
+                key="generated_policy_token_file",
+            )
+            selected_token_path = POLICY_TOKENS_DIR / selected_token_file
+
+            if selected_token_path.is_file():
+                st.download_button(
+                    label=f"⬇️ Download {selected_token_path.name}",
+                    data=selected_token_path.read_bytes(),
+                    file_name=selected_token_path.name,
+                    mime="application/json",
+                    key="download_generated_policy_token",
+                )
+            else:
+                st.error("Selected token file no longer exists.")
 
 
 # =============================================================
