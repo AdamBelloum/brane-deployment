@@ -219,23 +219,35 @@ def _render_package_management() -> None:
             )
             if st.button("🔨 Build Package", key="btn_build_pkg"):
                 container_yml = os.path.join(PACKAGES_DIR, selected_pkg, "container.yml")
-                if os.path.exists(container_yml):
-                    try:
-                        result = subprocess.run(
-                            ["brane", "package", "build", "--arch", "x86_64", container_yml],
-                            capture_output=True,
-                            text=True,
-                            timeout=60,
-                        )
-                        if result.returncode == 0:
-                            st.success(f"Package '{selected_pkg}' built successfully!")
-                            st.code(result.stdout, language="text")
-                        else:
-                            st.error(f"Build failed: {result.stderr}")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-                else:
+                if not os.path.exists(container_yml):
                     st.error(f"container.yml not found in {selected_pkg}")
+                else:
+                    task, error = task_manager.start_task(
+                        role="user",
+                        operation="package_build",
+                        label=f"Build package: {selected_pkg}",
+                        command=[
+                            "brane",
+                            "package",
+                            "build",
+                            "--arch",
+                            "x86_64",
+                            container_yml,
+                        ],
+                        cwd=os.path.dirname(PACKAGES_DIR),
+                        metadata={
+                            "architecture": "x86_64",
+                            "package": selected_pkg,
+                            "container_yml": container_yml,
+                        },
+                        lock_name="package-build",
+                    )
+                    if error:
+                        st.error(error)
+                    else:
+                        st.session_state.user_package_build_task_id = task["id"]
+                        st.success("Package build started in the background.")
+                        st.rerun()
         else:
             st.info("No packages found in packages/ directory")
     
@@ -255,6 +267,10 @@ def _render_package_management() -> None:
                     st.info("No packages built yet")
             except Exception as e:
                 st.error(f"Error: {e}")
+
+    package_build_task_id = st.session_state.get("user_package_build_task_id")
+    if package_build_task_id:
+        render_task_monitor(package_build_task_id, title="Package build progress")
 
 
 def _render_workflow_execution() -> None:
