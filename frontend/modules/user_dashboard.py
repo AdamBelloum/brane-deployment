@@ -161,20 +161,29 @@ def _render_instance_management() -> None:
     with col1:
         st.markdown("#### List Instances")
         if st.button("📋 Show Instances", key="btn_list_instances"):
-            try:
-                result = subprocess.run(
-                    ["brane", "instance", "list"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.returncode == 0:
-                    st.code(result.stdout, language="text")
-                else:
-                    st.error("Failed to list instances")
-            except Exception as e:
-                st.error(f"Error: {e}")
-    
+            task, error = task_manager.start_task(
+                role="user",
+                operation="instance_list",
+                label="List configured instances",
+                command=["brane", "instance", "list"],
+                cwd=os.path.dirname(PACKAGES_DIR),
+                metadata={"read_only": True},
+                lock_name="instance-list",
+            )
+            if error:
+                st.error(error)
+            else:
+                st.session_state.user_instance_list_task_id = task["id"]
+                st.success("Instance listing started in the background.")
+                st.rerun()
+
+        instance_list_task_id = st.session_state.get("user_instance_list_task_id")
+        if instance_list_task_id:
+            render_task_monitor(
+                instance_list_task_id,
+                title="Configured instances",
+            )
+
     with col2:
         st.markdown("#### Add Instance")
         with st.form("add_instance_form"):
@@ -276,19 +285,28 @@ def _render_package_management() -> None:
     with col2:
         st.markdown("#### List Built Packages")
         if st.button("📋 Show Built Packages", key="btn_list_built_pkg"):
-            try:
-                result = subprocess.run(
-                    ["brane", "package", "list"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.returncode == 0:
-                    st.code(result.stdout, language="text")
-                else:
-                    st.info("No packages built yet")
-            except Exception as e:
-                st.error(f"Error: {e}")
+            task, error = task_manager.start_task(
+                role="user",
+                operation="package_list",
+                label="List built packages",
+                command=["brane", "package", "list"],
+                cwd=os.path.dirname(PACKAGES_DIR),
+                metadata={"read_only": True},
+                lock_name="package-list",
+            )
+            if error:
+                st.error(error)
+            else:
+                st.session_state.user_package_list_task_id = task["id"]
+                st.success("Package listing started in the background.")
+                st.rerun()
+
+        package_list_task_id = st.session_state.get("user_package_list_task_id")
+        if package_list_task_id:
+            render_task_monitor(
+                package_list_task_id,
+                title="Built packages",
+            )
 
     package_build_task_id = st.session_state.get("user_package_build_task_id")
     if package_build_task_id:
