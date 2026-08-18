@@ -22,6 +22,9 @@ import re
 import io
 from typing import List, Dict, Tuple
 
+from modules.task_manager import start_task
+from modules.task_ui import render_task_monitor
+
 from modules.config import (
     ANSIBLE_DIR,
     INVENTORY_PATH,
@@ -171,208 +174,215 @@ def _generate_policy_token(manager_name: str, domain_id: str, validity: str = "3
 # =============================================================
 
 def _render_deployment_functions() -> None:
-    """Render deployment functions section."""
+    """Render task-backed infrastructure administration operations."""
     st.subheader("🚀 Deployment Functions")
-    
+
+    def start_infrastructure_task(
+        *,
+        operation: str,
+        label: str,
+        command: List[str],
+        metadata: Dict[str, object],
+    ) -> None:
+        task, error = start_task(
+            role="admin",
+            operation=operation,
+            label=label,
+            command=command,
+            cwd=ANSIBLE_DIR,
+            metadata=metadata,
+            lock_name="admin-infrastructure-operation",
+        )
+        if error:
+            st.error(error)
+            return
+
+        st.session_state.admin_infrastructure_task_id = task["id"]
+        st.success("Infrastructure task started in the background.")
+        st.rerun()
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.markdown("#### 1️⃣ Health Check")
         if st.button("🏥 Run Health Check", key="btn_health_check"):
-            with st.spinner("Running health check..."):
-                try:
-                    # Try multiple possible paths for the health check script
-                    possible_paths = [
-                        os.path.join(REPO_ROOT, "scripts", "brane_healthcheck.sh"),
-                        os.path.join(REPO_ROOT, "brane_healthcheck.sh"),
-                        "brane_healthcheck.sh",
-                    ]
-                    
-                    script_path = None
-                    for path in possible_paths:
-                        if os.path.exists(path):
-                            script_path = path
-                            break
-                    
-                    if script_path:
-                        # Run from ANSIBLE_DIR so relative paths work
-                        success, output = _run_command(
-                            ["bash", script_path], 
-                            timeout=120, 
-                            cwd=ANSIBLE_DIR
-                        )
-                        
-                        # Clean ANSI codes for better display
-                        clean_output = _clean_ansi_codes(output)
-                        
-                        if success:
-                            st.success("✅ Health check completed")
-                        else:
-                            st.warning("⚠️ Health check completed with warnings")
-                        st.code(clean_output, language="text")
-                    else:
-                        st.error("❌ Health check script not found")
-                        st.info(f"Looked in:\n- {possible_paths[0]}\n- {possible_paths[1]}\n- {possible_paths[2]}")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-    
+            possible_paths = [
+                os.path.join(REPO_ROOT, "scripts", "brane_healthcheck.sh"),
+                os.path.join(REPO_ROOT, "brane_healthcheck.sh"),
+                "brane_healthcheck.sh",
+            ]
+            script_path = next(
+                (candidate for candidate in possible_paths if os.path.isfile(candidate)),
+                None,
+            )
+
+            if script_path is None:
+                st.error("❌ Health check script not found")
+                st.info(
+                    "Looked in:\n"
+                    f"- {possible_paths[0]}\n"
+                    f"- {possible_paths[1]}\n"
+                    f"- {possible_paths[2]}"
+                )
+            else:
+                start_infrastructure_task(
+                    operation="infrastructure_health_check",
+                    label="Run infrastructure health check",
+                    command=["bash", script_path],
+                    metadata={
+                        "read_only": True,
+                        "script_path": script_path,
+                    },
+                )
+
     with col2:
         st.markdown("#### 2️⃣ Deploy Infrastructure")
         if st.button("🚀 Configure Deployment", key="btn_deploy_config"):
             st.session_state.show_deploy_config = True
-    
+
     with col3:
         st.markdown("#### 3️⃣ Run Tests")
         if st.button("🧪 Run Smoke Tests", key="btn_smoke_tests"):
-            with st.spinner("Running smoke tests..."):
-                try:
-                    # Verify inventory file exists
-                    if not os.path.exists(INVENTORY_PATH):
-                        st.error(f"❌ Inventory file not found: {INVENTORY_PATH}")
-                        return
-                    
-                    playbook_path = os.path.join(ANSIBLE_DIR, "site.yml")
-                    if not os.path.exists(playbook_path):
-                        st.error(f"❌ Playbook not found: {playbook_path}")
-                        return
-                    
-                    success, output = _run_command(
-                        ["ansible-playbook", "-i", INVENTORY_PATH,
-                         playbook_path, "--tags", "smoke"],
-                        timeout=300,
-                        cwd=ANSIBLE_DIR
-                    )
-                    
-                    # Clean ANSI codes
-                    clean_output = _clean_ansi_codes(output)
-                    
-                    if success:
-                        st.success("✅ Smoke tests passed")
-                    else:
-                        st.error("❌ Smoke tests failed")
-                    st.code(clean_output, language="text")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-    
-    # Deployment configuration section
+            playbook_path = os.path.join(ANSIBLE_DIR, "site.yml")
+            if not os.path.isfile(INVENTORY_PATH):
+                st.error(f"❌ Inventory file not found: {INVENTORY_PATH}")
+            elif not os.path.isfile(playbook_path):
+                st.error(f"❌ Playbook not found: {playbook_path}")
+            else:
+                start_infrastructure_task(
+                    operation="infrastructure_smoke_tests",
+                    label="Run infrastructure smoke tests",
+                    command=[
+                        "ansible-playbook",
+                        "-i",
+                        INVENTORY_PATH,
+                        playbook_path,
+                        "--tags",
+                        "smoke",
+                    ],
+                    metadata={
+                        "read_only": True,
+                        "inventory_path": INVENTORY_PATH,
+                        "playbook_path": playbook_path,
+                        "tags": ["smoke"],
+                    },
+                )
+
     if st.session_state.get("show_deploy_config", False):
         st.divider()
         st.markdown("### 🎯 Deployment Configuration")
-        
-        # Verify files exist first
-        if not os.path.exists(INVENTORY_PATH):
+
+        if not os.path.isfile(INVENTORY_PATH):
             st.error(f"❌ Inventory file not found: {INVENTORY_PATH}")
-            st.info("Please configure your inventory file first.")
-            return
-        
-        playbook_path = os.path.join(ANSIBLE_DIR, "site.yml")
-        if not os.path.exists(playbook_path):
-            st.error(f"❌ Playbook not found: {playbook_path}")
-            return
-        
-        st.info(f"**Inventory:** `{INVENTORY_PATH}`")
-        st.info(f"**Playbook:** `{playbook_path}`")
-        
-        st.divider()
-        
-        # Deployment tag selection
-        st.markdown("#### Select Deployment Phase(s)")
-        
-        tags_dict = _get_deployment_tags()
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            selected_phase = st.selectbox(
-                "Choose deployment phase",
-                list(tags_dict.keys()),
-                key="deploy_phase_select"
-            )
-        
-        with col2:
-            st.write("")  # Spacer
-            deploy_button = st.button("▶️ Start Deployment", key="btn_start_deploy", type="primary")
-        
-        if deploy_button:
-            phase_tag = tags_dict[selected_phase]
-            
-            with st.spinner(f"Deploying: {selected_phase}..."):
-                try:
-                    # Build command
-                    cmd = [
-                        "ansible-playbook", "-i", INVENTORY_PATH,
-                        playbook_path
+        else:
+            playbook_path = os.path.join(ANSIBLE_DIR, "site.yml")
+            if not os.path.isfile(playbook_path):
+                st.error(f"❌ Playbook not found: {playbook_path}")
+            else:
+                st.info(f"**Inventory:** `{INVENTORY_PATH}`")
+                st.info(f"**Playbook:** `{playbook_path}`")
+                st.divider()
+
+                st.markdown("#### Select Deployment Phase(s)")
+                tags_dict = _get_deployment_tags()
+
+                phase_column, button_column = st.columns([2, 1])
+                with phase_column:
+                    selected_phase = st.selectbox(
+                        "Choose deployment phase",
+                        list(tags_dict.keys()),
+                        key="deploy_phase_select",
+                    )
+
+                with button_column:
+                    st.write("")
+                    deploy_button = st.button(
+                        "▶️ Start Deployment",
+                        key="btn_start_deploy",
+                        type="primary",
+                    )
+
+                if deploy_button:
+                    phase_tag = tags_dict[selected_phase]
+                    command = [
+                        "ansible-playbook",
+                        "-i",
+                        INVENTORY_PATH,
+                        playbook_path,
                     ]
-                    
-                    # Add tags if not full deployment
                     if phase_tag:
-                        cmd.extend(["--tags", phase_tag])
-                    
-                    # Run deployment
-                    success, output = _run_command(cmd, timeout=3600, cwd=ANSIBLE_DIR)
-                    
-                    # Clean ANSI codes
-                    clean_output = _clean_ansi_codes(output)
-                    
-                    if success:
-                        st.success(f"✅ {selected_phase} completed successfully!")
-                    else:
-                        st.error(f"❌ {selected_phase} failed")
-                    
-                    st.code(clean_output, language="text")
-                    
-                except Exception as e:
-                    st.error(f"Error: {e}")
-        
-        st.divider()
-        
-        # Additional options
-        st.markdown("#### Advanced Options")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("🔍 Dry Run (Check Mode)", key="btn_dry_run"):
-                with st.spinner("Running dry run..."):
-                    try:
-                        cmd = [
-                            "ansible-playbook", "-i", INVENTORY_PATH,
-                            playbook_path, "--check", "--diff"
-                        ]
-                        success, output = _run_command(cmd, timeout=300, cwd=ANSIBLE_DIR)
-                        clean_output = _clean_ansi_codes(output)
-                        
-                        if success:
-                            st.success("✅ Dry run completed")
-                        else:
-                            st.warning("⚠️ Dry run showed potential issues")
-                        st.code(clean_output, language="text")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-        
-        with col2:
-            if st.button("✓ Syntax Check", key="btn_syntax_check"):
-                with st.spinner("Checking syntax..."):
-                    try:
-                        cmd = [
-                            "ansible-playbook", "-i", INVENTORY_PATH,
-                            playbook_path, "--syntax-check"
-                        ]
-                        success, output = _run_command(cmd, timeout=30, cwd=ANSIBLE_DIR)
-                        clean_output = _clean_ansi_codes(output)
-                        
-                        if success:
-                            st.success("✅ Syntax is valid")
-                        else:
-                            st.error("❌ Syntax error")
-                        st.code(clean_output, language="text")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-        
-        with col3:
-            if st.button("❌ Close Configuration", key="btn_close_deploy_config"):
-                st.session_state.show_deploy_config = False
-                st.rerun()
+                        command.extend(["--tags", phase_tag])
+
+                    start_infrastructure_task(
+                        operation="infrastructure_deploy",
+                        label=f"Deploy infrastructure: {selected_phase}",
+                        command=command,
+                        metadata={
+                            "inventory_path": INVENTORY_PATH,
+                            "playbook_path": playbook_path,
+                            "phase": selected_phase,
+                            "tags": [phase_tag] if phase_tag else [],
+                        },
+                    )
+
+                st.divider()
+                st.markdown("#### Advanced Options")
+
+                dry_run_column, syntax_column, close_column = st.columns(3)
+
+                with dry_run_column:
+                    if st.button("🔍 Dry Run (Check Mode)", key="btn_dry_run"):
+                        start_infrastructure_task(
+                            operation="infrastructure_dry_run",
+                            label="Dry-run infrastructure deployment",
+                            command=[
+                                "ansible-playbook",
+                                "-i",
+                                INVENTORY_PATH,
+                                playbook_path,
+                                "--check",
+                                "--diff",
+                            ],
+                            metadata={
+                                "read_only": True,
+                                "inventory_path": INVENTORY_PATH,
+                                "playbook_path": playbook_path,
+                            },
+                        )
+
+                with syntax_column:
+                    if st.button("✓ Syntax Check", key="btn_syntax_check"):
+                        start_infrastructure_task(
+                            operation="infrastructure_syntax_check",
+                            label="Check infrastructure playbook syntax",
+                            command=[
+                                "ansible-playbook",
+                                "-i",
+                                INVENTORY_PATH,
+                                playbook_path,
+                                "--syntax-check",
+                            ],
+                            metadata={
+                                "read_only": True,
+                                "inventory_path": INVENTORY_PATH,
+                                "playbook_path": playbook_path,
+                            },
+                        )
+
+                with close_column:
+                    if st.button(
+                        "❌ Close Configuration",
+                        key="btn_close_deploy_config",
+                    ):
+                        st.session_state.show_deploy_config = False
+                        st.rerun()
+
+    task_id = st.session_state.get("admin_infrastructure_task_id")
+    if task_id:
+        render_task_monitor(
+            task_id,
+            title="Infrastructure task progress",
+        )
 
 
 # =============================================================
