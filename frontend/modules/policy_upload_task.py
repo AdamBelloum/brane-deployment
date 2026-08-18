@@ -35,14 +35,23 @@ def _redact(text: str, token: str) -> str:
     return text.replace(token, "[REDACTED]")
 
 
-def _run_step(description: str, command: list[str], token: str) -> int:
-    """Run one command, streaming only redacted output to the task log."""
+def _run_step(
+    description: str,
+    command: list[str],
+    token: str,
+    stdin_text: str | None = None,
+) -> int:
+    """Run one command, streaming only redacted output to the task log.
+
+    ``stdin_text`` is used only for secret transport. It is never logged and
+    is not included in command arguments or persistent task metadata.
+    """
     print(f"\n[policy-upload] {description}", flush=True)
 
     try:
         process = subprocess.Popen(
             command,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -51,6 +60,16 @@ def _run_step(description: str, command: list[str], token: str) -> int:
     except OSError as exc:
         print(f"[policy-upload] Could not start {description.lower()}: {exc}", flush=True)
         return 1
+
+    if stdin_text is not None:
+        assert process.stdin is not None
+        try:
+            process.stdin.write(stdin_text)
+            process.stdin.close()
+        except BrokenPipeError:
+            # The remote command exited before consuming stdin. Its output and
+            # return code below provide the actionable error.
+            pass
 
     assert process.stdout is not None
     for line in process.stdout:
@@ -88,7 +107,7 @@ def main() -> int:
     ssh_options = [
         "-o", "BatchMode=yes",
         "-o", "ConnectTimeout=10",
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
     ]
     remote_path = f"/tmp/brane_policy/{policy_path.name}"
 
@@ -111,15 +130,19 @@ def main() -> int:
     ) != 0:
         return 1
 
+    # Read the JWT over SSH stdin and expose it only as the TOKEN environment
+    # variable required by branectl. The token is deliberately absent from all
+    # local and remote process arguments.
     remote_command = (
-        f"branectl policies add {shlex.quote(remote_path)} "
-        f"--token {shlex.quote(token)} "
+        "IFS= read -r TOKEN; export TOKEN; "
+        f"exec branectl policies add {shlex.quote(remote_path)} "
         f"--address {shlex.quote(f'localhost:{args.brane_port}')}"
     )
     if _run_step(
         "Adding the policy on the worker...",
         ["ssh", *ssh_options, destination, remote_command],
         token,
+        stdin_text=f"{token}\n",
     ) != 0:
         return 1
 
