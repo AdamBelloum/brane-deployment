@@ -68,12 +68,7 @@ from modules.config import (
 # =============================================================
 
 def _get_instances() -> List[str]:
-    """
-    Get list of configured Brane instances.
-    
-    Returns:
-        List of instance names
-    """
+    """Return configured Brane instance names."""
     try:
         result = subprocess.run(
             ["brane", "instance", "list"],
@@ -81,18 +76,25 @@ def _get_instances() -> List[str]:
             text=True,
             timeout=5,
         )
-        if result.returncode == 0:
-            # Parse instance names from output
-            instances = []
-            for line in result.stdout.split('\n'):
-                if line.strip() and not line.startswith('Name'):
-                    parts = line.split()
-                    if parts:
-                        instances.append(parts[0])
-            return instances
+    except (OSError, subprocess.SubprocessError):
         return []
-    except Exception:
+
+    if result.returncode != 0:
         return []
+
+    instances = []
+    for line in result.stdout.splitlines():
+        stripped = line.replace("\x00", "").strip()
+        if not stripped:
+            continue
+
+        parts = stripped.split()
+        if not parts or parts[0].upper() == "NAME":
+            continue
+
+        instances.append(parts[0])
+
+    return instances
 
 
 def _get_workflows() -> List[str]:
@@ -325,30 +327,43 @@ def _render_workflow_execution() -> None:
             )
             if st.button("▶️ Run Remotely", key="btn_run_remote_wf"):
                 wf_path = os.path.join(PACKAGES_DIR, selected_wf_remote)
-                if os.path.exists(wf_path):
-                    try:
-                        # Select instance first
-                        subprocess.run(
-                            ["brane", "instance", "select", selected_instance],
-                            capture_output=True,
-                            timeout=5,
-                        )
-                        # Run workflow remotely
-                        result = subprocess.run(
-                            ["brane", "workflow", "run", "--remote", username_remote, wf_path],
-                            capture_output=True,
-                            text=True,
-                            timeout=60,
-                        )
-                        if result.returncode == 0:
-                            st.success("Workflow submitted successfully!")
-                            st.code(result.stdout, language="text")
-                        else:
-                            st.error(f"Submission failed: {result.stderr}")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-                else:
+                if not os.path.exists(wf_path):
                     st.error(f"Workflow not found: {wf_path}")
+                else:
+                    runner_path = os.path.join(
+                        os.path.dirname(PACKAGES_DIR),
+                        "scripts",
+                        "run_remote_workflow.py",
+                    )
+                    task, error = task_manager.start_task(
+                        role="user",
+                        operation="workflow_run_remote",
+                        label=f"Remote workflow: {selected_wf_remote}",
+                        command=[
+                            "python3",
+                            runner_path,
+                            "--instance",
+                            selected_instance,
+                            "--username",
+                            username_remote,
+                            "--workflow",
+                            wf_path,
+                        ],
+                        cwd=os.path.dirname(PACKAGES_DIR),
+                        metadata={
+                            "mode": "remote",
+                            "instance": selected_instance,
+                            "username": username_remote,
+                            "workflow": selected_wf_remote,
+                        },
+                        lock_name="workflow-execution",
+                    )
+                    if error:
+                        st.error(error)
+                    else:
+                        st.session_state.user_remote_workflow_task_id = task["id"]
+                        st.success("Remote workflow submission started in the background.")
+                        st.rerun()
         else:
             st.warning("No instances configured. Use Instance Management to add one.")
 
@@ -356,6 +371,10 @@ def _render_workflow_execution() -> None:
     local_task_id = st.session_state.get("user_local_workflow_task_id")
     if local_task_id:
         render_task_monitor(local_task_id, title="Local workflow progress")
+
+    remote_task_id = st.session_state.get("user_remote_workflow_task_id")
+    if remote_task_id:
+        render_task_monitor(remote_task_id, title="Remote workflow progress")
 
 
 def _render_certificate_management() -> None:
