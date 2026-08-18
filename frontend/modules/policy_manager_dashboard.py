@@ -47,6 +47,9 @@
 
 import os
 import subprocess
+import sys
+from pathlib import Path
+
 import streamlit as st
 import json
 import base64
@@ -56,10 +59,15 @@ from typing import Optional, List, Dict
 from modules.config import (
     POLICIES_DIR,
     POLICY_TOKENS_DIR,
-    ANSIBLE_INVENTORY,
+    INVENTORY_PATH,
+    REPO_ROOT,
     list_policies,
     list_policy_tokens,
 )
+
+
+from modules.task_manager import start_task
+from modules.task_ui import render_task_monitor
 
 
 # =============================================================
@@ -75,14 +83,14 @@ def _parse_inventory() -> Dict[str, List[str]]:
     """
     result = {"workers": [], "central": ""}
     
-    if not os.path.exists(ANSIBLE_INVENTORY):
+    if not os.path.exists(INVENTORY_PATH):
         return result
     
     try:
         in_workers = False
         in_central = False
         
-        with open(ANSIBLE_INVENTORY, 'r') as f:
+        with open(INVENTORY_PATH, 'r') as f:
             for line in f:
                 line = line.strip()
                 
@@ -244,7 +252,7 @@ def _render_environment_status() -> None:
                     st.caption(f"• {worker}")
     
     with col4:
-        if os.path.exists(ANSIBLE_INVENTORY):
+        if os.path.exists(INVENTORY_PATH):
             st.metric("📂 Inventory", "✓ Found")
         else:
             st.metric("📂 Inventory", "✗ Missing")
@@ -362,55 +370,49 @@ def _render_policy_upload() -> None:
     
     # Upload and add policy
     if st.button("📤 Upload & Add Policy", key="btn_add_policy", type="primary"):
-        with st.spinner("Uploading policy..."):
-            try:
-                # Read token
-                with open(token_path, 'r') as f:
-                    token_data = json.load(f)
-                    token = token_data.get('token') or token_data.get('access_token') or list(token_data.values())[0]
-                
-                # Create remote work directory
-                subprocess.run(
-                    ["ssh", "-o", "StrictHostKeyChecking=no",
-                     f"{ssh_user}@{worker_host}", "mkdir -p /tmp/brane_policy"],
-                    capture_output=True,
-                    timeout=10,
-                )
-                
-                # Upload policy file
-                remote_path = f"/tmp/brane_policy/{os.path.basename(policy_path)}"
-                subprocess.run(
-                    ["scp", "-o", "StrictHostKeyChecking=no",
-                     policy_path, f"{ssh_user}@{worker_host}:{remote_path}"],
-                    capture_output=True,
-                    timeout=30,
-                )
-                
-                st.success("✅ Policy file uploaded")
-                
-                # Add policy via branectl
-                cmd = [
-                    "ssh", "-o", "StrictHostKeyChecking=no",
-                    f"{ssh_user}@{worker_host}",
-                    f"branectl policies add '{remote_path}' --token '{token}' --address localhost:{brane_port}"
-                ]
-                
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-                
-                if result.returncode == 0:
-                    st.success("✅ Policy added successfully!")
-                    st.info("Note the version ID from the output above. Use it to activate the policy.")
-                    st.code(result.stdout, language="text")
-                else:
-                    st.error(f"Failed to add policy: {result.stderr}")
-            
-            except Exception as e:
-                st.error(f"Error: {e}")
+        if not worker_host or not ssh_user or not brane_port:
+            st.error("Worker host, SSH user, and brane-chk port are required.")
+        else:
+            task, error = start_task(
+                role="policy-manager",
+                operation="policy_upload_add",
+                label=f"Upload and add policy: {selected_policy}",
+                command=[
+                    sys.executable,
+                    str(Path(__file__).with_name("policy_upload_task.py")),
+                    "--policy-path",
+                    policy_path,
+                    "--token-path",
+                    token_path,
+                    "--worker-host",
+                    worker_host,
+                    "--ssh-user",
+                    ssh_user,
+                    "--brane-port",
+                    brane_port,
+                ],
+                cwd=REPO_ROOT,
+                metadata={
+                    "policy_file": selected_policy,
+                    "worker_host": worker_host,
+                    "ssh_user": ssh_user,
+                    "brane_port": brane_port,
+                },
+                lock_name="policy-upload-add",
+            )
+            if error:
+                st.error(error)
+            else:
+                st.session_state.policy_upload_task_id = task["id"]
+                st.success("Policy upload and add started in the background.")
+                st.rerun()
+
+    policy_upload_task_id = st.session_state.get("policy_upload_task_id")
+    if policy_upload_task_id:
+        render_task_monitor(
+            policy_upload_task_id,
+            title="Policy upload and add progress",
+        )
 
 
 def _render_policy_activation() -> None:

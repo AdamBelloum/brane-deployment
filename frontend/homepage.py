@@ -77,6 +77,7 @@ from modules.Deploy_cli import render_cli_panel
 from modules.Editor_Brane_Scripts import render_brane_scripts
 from modules.Editor_Data_Policy import render_data_policy
 from modules.user_dashboard import render_user_dashboard
+from modules.policy_manager_dashboard import render_policy_manager_dashboard
 
 # ===================================================================
 # 🗺️ CONTROLLER NAVIGATION & ROUTING
@@ -93,6 +94,7 @@ page_selection = st.sidebar.radio(
         "Deploy Brane CLI",
         "Editor Brane Scripts",
         "Editor Data Policy",
+        "Policy Manager",
         "User Workspace",
         "Task History"
     ]
@@ -118,6 +120,8 @@ elif page_selection == "Editor Brane Scripts":
     render_brane_scripts()
 elif page_selection == "Editor Data Policy":
     render_data_policy()
+elif page_selection == "Policy Manager":
+    render_policy_manager_dashboard()
 elif page_selection == "User Workspace":
     render_user_dashboard()
 elif page_selection == "Task History":

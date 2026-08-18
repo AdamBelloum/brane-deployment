@@ -155,3 +155,17 @@ def list_certs() -> list[str]:
 def list_datasets() -> list[str]:
     """Return dataset-file paths relative to datasets/."""
     return _list_resource_files(DATASETS_DIR)
+
+
+def list_policies() -> list[str]:
+    """Return non-hidden eFLINT policy-file paths relative to policies/."""
+    return [
+        relative_path
+        for relative_path in _list_resource_files(POLICIES_DIR)
+        if relative_path.endswith(".eflint")
+    ]
+
+
+def list_policy_tokens() -> list[str]:
+    """Return non-hidden policy-token file paths relative to policy_tokens/."""
+    return _list_resource_files(POLICY_TOKENS_DIR)
