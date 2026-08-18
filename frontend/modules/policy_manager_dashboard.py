@@ -202,20 +202,6 @@ def _get_policy_files() -> List[str]:
     return sorted(policies)
 
 
-def _test_ssh_connection(host: str, user: str) -> bool:
-    """Test SSH connectivity to a host."""
-    try:
-        result = subprocess.run(
-            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
-             "-q", f"{user}@{host}", "exit"],
-            capture_output=True,
-            timeout=10,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-
 # =============================================================
 # UI SECTIONS
 # =============================================================
@@ -361,11 +347,44 @@ def _render_policy_upload() -> None:
     
     # Test connection
     if st.button("🔗 Test Connection", key="btn_test_conn"):
-        if _test_ssh_connection(worker_host, ssh_user):
-            st.success(f"✅ SSH to {ssh_user}@{worker_host} OK")
+        if not worker_host or not ssh_user:
+            st.error("Worker host and SSH user are required.")
         else:
-            st.error(f"❌ SSH to {ssh_user}@{worker_host} failed")
-    
+            task, error = start_task(
+                role="policy-manager",
+                operation="policy_ssh_connectivity_check",
+                label=f"Check SSH connectivity: {ssh_user}@{worker_host}",
+                command=[
+                    "ssh",
+                    "-o", "BatchMode=yes",
+                    "-o", "ConnectTimeout=5",
+                    "-o", "StrictHostKeyChecking=accept-new",
+                    "-q",
+                    f"{ssh_user}@{worker_host}",
+                    "exit",
+                ],
+                cwd=REPO_ROOT,
+                metadata={
+                    "worker_host": worker_host,
+                    "ssh_user": ssh_user,
+                    "read_only": True,
+                },
+                lock_name="policy-ssh-connectivity-check",
+            )
+            if error:
+                st.error(error)
+            else:
+                st.session_state.policy_ssh_check_task_id = task["id"]
+                st.success("SSH connectivity check started in the background.")
+                st.rerun()
+
+    policy_ssh_check_task_id = st.session_state.get("policy_ssh_check_task_id")
+    if policy_ssh_check_task_id:
+        render_task_monitor(
+            policy_ssh_check_task_id,
+            title="Worker SSH connectivity check",
+        )
+
     st.divider()
     
     # Upload and add policy
