@@ -101,12 +101,54 @@ def render_cli_panel():
         
         with col_adm1:
             if st.button("▶️ Start Brane Services", type="primary", key="cli_start_srv_btn"):
-                run_check_cmd(["branectl", "start", target_node_type])
+                task, error = task_manager.start_task(
+                    role="admin",
+                    operation="service_start",
+                    label=f"Start Brane services: {target_node_type}",
+                    command=["branectl", "start", target_node_type],
+                    cwd=REPO_ROOT,
+                    metadata={
+                        "action": "start",
+                        "service_profile": target_node_type,
+                    },
+                    lock_name="service-lifecycle",
+                )
+                if error:
+                    st.error(error)
+                else:
+                    st.session_state.cli_service_task_id = task["id"]
+                    st.success("Service start started in the background.")
+                    st.rerun()
+
         with col_adm2:
             if st.button("🛑 Stop Brane Services", key="cli_stop_srv_btn"):
-                run_check_cmd(["branectl", "stop", target_node_type])
-                
-            st.divider()
+                task, error = task_manager.start_task(
+                    role="admin",
+                    operation="service_stop",
+                    label=f"Stop Brane services: {target_node_type}",
+                    command=["branectl", "stop", target_node_type],
+                    cwd=REPO_ROOT,
+                    metadata={
+                        "action": "stop",
+                        "service_profile": target_node_type,
+                    },
+                    lock_name="service-lifecycle",
+                )
+                if error:
+                    st.error(error)
+                else:
+                    st.session_state.cli_service_task_id = task["id"]
+                    st.success("Service stop started in the background.")
+                    st.rerun()
+
+        cli_service_task_id = st.session_state.get("cli_service_task_id")
+        if cli_service_task_id:
+            render_task_monitor(
+                cli_service_task_id,
+                title="Brane service lifecycle progress",
+            )
+
+        st.divider()
         
         st.markdown("### 📑 Administrative Reference Matrix")
         col_ref1, col_ref2 = st.columns(2)
