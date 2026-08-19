@@ -9,9 +9,9 @@ from modules import task_store
 
 STATUS_ICON = {
     "queued": "⏳",
-    "running": "⚡",
-    "succeeded": "✓",
-    "failed": "✗",
+    "running": "",
+    "succeeded": "",
+    "failed": "",
     "interrupted": "!",
 }
 
@@ -45,7 +45,7 @@ def render_activity_sidebar() -> None:
     if active:
         st.sidebar.warning(f"{len(active)} background task{'s' if len(active) != 1 else ''} active")
         for task in active:
-            st.sidebar.caption(f"⚡ {task['label']}")
+            st.sidebar.caption(f" {task['label']}")
     else:
         st.sidebar.caption("No background tasks are active.")
 

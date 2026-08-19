@@ -106,13 +106,13 @@ def _get_instances() -> List[str]:
 
 def _render_environment_status() -> None:
     """Render environment status overview."""
-    st.subheader("📊 Environment Status")
+    st.subheader(" Environment Status")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
         packages = list_packages()
-        st.metric("📦 Packages", len(packages))
+        st.metric(" Packages", len(packages))
         if packages:
             with st.expander("View packages"):
                 for pkg in packages:
@@ -120,7 +120,7 @@ def _render_environment_status() -> None:
 
     with col2:
         certs = list_certs()
-        st.metric("🔐 Certificates", len(certs))
+        st.metric(" Certificates", len(certs))
         if certs:
             with st.expander("View certificates"):
                 for cert in certs:
@@ -128,7 +128,7 @@ def _render_environment_status() -> None:
 
     with col3:
         datasets = list_datasets()
-        st.metric("📂 Datasets", len(datasets))
+        st.metric(" Datasets", len(datasets))
         if datasets:
             with st.expander("View datasets"):
                 for ds in datasets:
@@ -253,7 +253,7 @@ def _render_instance_management() -> None:
 
 def _render_package_management() -> None:
     """Render package management section."""
-    st.subheader("📦 Package Management")
+    st.subheader(" Package Management")
 
     col1, col2 = st.columns(2)
 
@@ -266,7 +266,7 @@ def _render_package_management() -> None:
                 packages,
                 key="pkg_select_build"
             )
-            if st.button("🔨 Build Package", key="btn_build_pkg"):
+            if st.button(" Build Package", key="btn_build_pkg"):
                 container_yml = os.path.join(PACKAGES_DIR, selected_pkg, "container.yml")
                 if not os.path.exists(container_yml):
                     st.error(f"container.yml not found in {selected_pkg}")
@@ -302,7 +302,7 @@ def _render_package_management() -> None:
 
     with col2:
         st.markdown("#### List Built Packages")
-        if st.button("📋 Show Built Packages", key="btn_list_built_pkg"):
+        if st.button(" Show Built Packages", key="btn_list_built_pkg"):
             task, error = task_manager.start_task(
                 role="user",
                 operation="package_list",

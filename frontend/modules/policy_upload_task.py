@@ -15,20 +15,27 @@ from pathlib import Path
 
 
 def _read_token(token_path: Path) -> str:
-    """Read a supported token value without ever displaying it."""
-    token_data = json.loads(token_path.read_text(encoding="utf-8"))
+    """Read a JSON-wrapped or raw JWT without ever displaying it."""
+    raw_value = token_path.read_text(encoding="utf-8").strip()
+
+    if not raw_value:
+        raise ValueError("The token file is empty.")
+
+    if not raw_value.startswith("{"):
+        return raw_value
+
+    token_data = json.loads(raw_value)
     if not isinstance(token_data, dict):
-        raise ValueError("The token file must contain a JSON object.")
+        raise ValueError("The JSON token file must contain an object.")
 
     token = token_data.get("token") or token_data.get("access_token")
     if token is None and token_data:
         token = next(iter(token_data.values()))
 
-    if not isinstance(token, str) or not token:
+    if not isinstance(token, str) or not token.strip():
         raise ValueError("The token file does not contain a usable token.")
 
-    return token
-
+    return token.strip()
 
 def _redact(text: str, token: str) -> str:
     """Prevent an unexpectedly echoed token from reaching the task log."""
