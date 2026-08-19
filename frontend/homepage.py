@@ -2,7 +2,7 @@ from modules.task_ui import render_activity_sidebar, render_task_history
 import streamlit as st
 
 # ===================================================================
-# 🔧 INITIALIZE SESSION STATE
+#  INITIALIZE SESSION STATE
 # ===================================================================
 
 # Role & Configuration
@@ -67,7 +67,7 @@ if "show_deploy_config" not in st.session_state:
     st.session_state.show_deploy_config = False
 
 # ===================================================================
-# 📦 IMPORTS
+#  IMPORTS
 # ===================================================================
 from modules.home import render_home_dashboard
 from modules.Cluster_Configurator import render_cluster_config
@@ -80,7 +80,7 @@ from modules.policy_manager_dashboard import render_policy_manager_dashboard
 from modules.admin_dashboard import render_admin_dashboard
 
 # ===================================================================
-# 🗺️ ROLE-ORIENTED NAVIGATION & ROUTING
+# ️ ROLE-ORIENTED NAVIGATION & ROUTING
 # ===================================================================
 
 PAGES = {
@@ -152,7 +152,7 @@ def render_navigation_button(page_id: str) -> None:
     """Render one sidebar navigation action and preserve the selected page."""
     page = PAGES[page_id]
     selected = page_id == st.session_state.current_page
-    label = f"● {page['label']}" if selected else page["label"]
+    label = page["label"]
 
     if st.button(
         label,
@@ -165,14 +165,14 @@ def render_navigation_button(page_id: str) -> None:
 
 
 with st.sidebar:
-    st.title("🧬 Brane Control Center")
-    st.caption("Choose a workspace based on the task you need to perform.")
+    st.title("Brane Control Center")
+    st.caption("Select a workspace based on your responsibility.")
 
     render_navigation_button("home")
     render_navigation_button("workstation_setup")
 
     with st.expander(
-        "⚙️ Administration",
+        "️ Administration",
         expanded=current_page.startswith("admin_"),
     ):
         st.caption("Operate and maintain the Brane deployment.")
@@ -184,14 +184,14 @@ with st.sidebar:
             render_navigation_button(page_id)
 
     with st.expander(
-        "🔐 Policy Management",
+        "Policy management",
         expanded=current_page.startswith("policy_"),
     ):
         st.caption("Manage data-access policies and their lifecycle.")
         render_navigation_button("policy_overview")
 
     with st.expander(
-        "👤 User Workspace",
+        "User workspace",
         expanded=current_page.startswith("user_"),
     ):
         st.caption("Create, submit, and follow Brane workflows.")
@@ -213,8 +213,8 @@ PAGES[st.session_state.current_page]["render"]()
 #  UNIVERSAL SIDEBAR FOOTER RESOURCE LINKS
 # ===================================================================
 with st.sidebar:
-    st.markdown("### 🌐 Official Brane Resources")
-    st.link_button("🏠 Official Website", "https://brane.software/")
-    st.link_button("📚 Documentation", "https://docs.brane.software/")
-    st.link_button("💻 GitHub Repository", "https://github.com/BraneFramework/brane")
-    st.caption("Brane Distributed Framework System Dashboard v1.0.0")
+    st.markdown("### Resources")
+    st.link_button("Brane website", "https://brane.software/")
+    st.link_button("Documentation", "https://docs.brane.software/")
+    st.link_button("Source repository", "https://github.com/BraneFramework/brane")
+    st.caption("Brane Control Center")

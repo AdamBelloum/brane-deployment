@@ -1,7 +1,9 @@
-"""Background tasks for listing and activating Brane policy versions.
+"""Background tasks for inspecting and activating Brane policy versions.
 
-JWT values are read locally and sent to the worker only over SSH stdin.
-They are never placed in task metadata, command arguments, or task logs.
+The worker-side ``branectl`` client speaks to brane-chk using its native gRPC
+protocol. JWT values are read locally and delivered to the remote command only
+over SSH standard input. They are never placed in task metadata, command
+arguments, or task logs.
 """
 
 from __future__ import annotations
@@ -19,19 +21,27 @@ VERSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 def read_token(token_path: Path) -> str:
-    """Read one supported JWT field without displaying its value."""
-    token_data = json.loads(token_path.read_text(encoding="utf-8"))
+    """Read a JSON-wrapped or raw JWT without ever displaying it."""
+    raw_value = token_path.read_text(encoding="utf-8").strip()
+
+    if not raw_value:
+        raise ValueError("The token file is empty.")
+
+    if not raw_value.startswith("{"):
+        return raw_value
+
+    token_data = json.loads(raw_value)
     if not isinstance(token_data, dict):
-        raise ValueError("The token file must contain a JSON object.")
+        raise ValueError("The JSON token file must contain an object.")
 
     token = token_data.get("token") or token_data.get("access_token")
     if token is None and token_data:
         token = next(iter(token_data.values()))
 
-    if not isinstance(token, str) or not token:
+    if not isinstance(token, str) or not token.strip():
         raise ValueError("The token file does not contain a usable token.")
 
-    return token
+    return token.strip()
 
 
 def redact(text: str, token: str) -> str:
@@ -39,28 +49,35 @@ def redact(text: str, token: str) -> str:
     return text.replace(token, "[REDACTED]")
 
 
-def run_remote_curl(
+def run_remote_branectl(
     *,
     description: str,
     destination: str,
     ssh_options: list[str],
-    url: str,
     token: str,
-    method: str | None = None,
+    brane_port: str,
+    operation: str,
+    version_id: str | None = None,
 ) -> int:
-    """Run Curl remotely without placing the JWT in process arguments."""
+    """Run a worker-side branectl policy command without exposing its JWT."""
     print(f"\n[policy-lifecycle] {description}", flush=True)
 
-    method_option = f"-X {shlex.quote(method)} " if method else ""
+    command_parts = [
+        "branectl",
+        "policies",
+        operation,
+    ]
+    if version_id:
+        command_parts.append(version_id)
+    command_parts.extend([
+        "--address",
+        f"localhost:{brane_port}",
+    ])
+    remote_branectl = " ".join(shlex.quote(part) for part in command_parts)
 
-    # SSH stdin carries only the token. The remote shell reads it once, then
-    # pipes a Curl config containing the Authorization header to `curl --config -`.
-    # Neither SSH nor Curl receives the token as a command-line argument.
     remote_command = (
         "IFS= read -r TOKEN; export TOKEN; "
-        "printf 'header = \"Authorization: Bearer %s\"\\n' \"$TOKEN\" "
-        f"| curl --silent --show-error --fail --config - {method_option}"
-        f"{shlex.quote(url)}"
+        f"exec {remote_branectl}"
     )
 
     try:
@@ -126,36 +143,37 @@ def main() -> int:
         "-o", "ConnectTimeout=10",
         "-o", "StrictHostKeyChecking=accept-new",
     ]
-    base_url = f"http://localhost:{args.brane_port}/v1/policies"
 
     if args.operation == "list":
-        return run_remote_curl(
-            description="Listing policy versions...",
+        return run_remote_branectl(
+            description="Inspecting policy versions and active policy state...",
             destination=destination,
             ssh_options=ssh_options,
-            url=base_url,
             token=token,
+            brane_port=args.brane_port,
+            operation="list",
         )
 
-    activation_url = f"{base_url}/{args.version_id}/activate"
-    if run_remote_curl(
+    if run_remote_branectl(
         description=f"Activating policy version {args.version_id}...",
         destination=destination,
         ssh_options=ssh_options,
-        url=activation_url,
         token=token,
-        method="POST",
+        brane_port=args.brane_port,
+        operation="activate",
+        version_id=args.version_id,
     ) != 0:
         return 1
 
-    return run_remote_curl(
-        description="Verifying the active policy...",
+    return run_remote_branectl(
+        description="Inspecting policy state after activation...",
         destination=destination,
         ssh_options=ssh_options,
-        url=f"{base_url}/active",
         token=token,
+        brane_port=args.brane_port,
+        operation="list",
     )
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

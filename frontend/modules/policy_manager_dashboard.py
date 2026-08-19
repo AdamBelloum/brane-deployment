@@ -130,55 +130,69 @@ def _parse_inventory() -> Dict[str, List[str]]:
     return result
 
 
-def _check_token_expiry(token_path: str) -> Dict[str, any]:
-    """
-    Check JWT token expiry.
-    
-    Returns:
-        Dict with 'valid', 'remaining_days', 'remaining_hours', 'error' keys
-    """
-    result = {"valid": False, "remaining_days": 0, "remaining_hours": 0, "error": None}
-    
+def _read_token_value(token_path: str) -> str:
+    """Read a JWT from either a JSON token file or a raw-token file."""
+    raw_value = Path(token_path).read_text(encoding="utf-8").strip()
+
+    if not raw_value:
+        raise ValueError("The token file is empty.")
+
+    if not raw_value.startswith("{"):
+        return raw_value
+
+    token_data = json.loads(raw_value)
+    if not isinstance(token_data, dict):
+        raise ValueError("The JSON token file must contain an object.")
+
+    token = token_data.get("token") or token_data.get("access_token")
+    if token is None and token_data:
+        token = next(iter(token_data.values()))
+
+    if not isinstance(token, str) or not token.strip():
+        raise ValueError("The token file does not contain a usable token.")
+
+    return token.strip()
+
+
+def _check_token_expiry(token_path: str) -> Dict[str, object]:
+    """Check expiry of a JSON-wrapped or raw JWT without displaying it."""
+    result: Dict[str, object] = {
+        "valid": False,
+        "remaining_days": 0,
+        "remaining_hours": 0,
+        "error": None,
+    }
+
     try:
-        # Read token from JSON file
-        with open(token_path, 'r') as f:
-            data = json.load(f)
-            token = data.get('token') or data.get('access_token') or list(data.values())[0]
-        
-        # Parse JWT
-        parts = token.split('.')
+        token = _read_token_value(token_path)
+        parts = token.split(".")
+
         if len(parts) != 3:
-            result["error"] = "Invalid JWT format"
+            result["error"] = "Invalid JWT format."
             return result
-        
-        # Decode payload
+
         payload = parts[1]
-        # Add padding if needed
-        payload += '=' * (4 - len(payload) % 4)
-        
-        try:
-            decoded = json.loads(base64.urlsafe_b64decode(payload))
-        except Exception as e:
-            result["error"] = f"Failed to decode JWT: {e}"
+        payload += "=" * (-len(payload) % 4)
+        decoded = json.loads(base64.urlsafe_b64decode(payload))
+
+        exp = decoded.get("exp")
+        if not isinstance(exp, (int, float)):
+            result["error"] = "The JWT does not contain a valid expiry claim."
             return result
-        
-        exp = decoded.get('exp', 0)
+
         remaining = exp - time.time()
-        
         if remaining <= 0:
-            result["error"] = "Token EXPIRED"
-            result["valid"] = False
-        else:
-            result["valid"] = True
-            result["remaining_days"] = int(remaining // 86400)
-            result["remaining_hours"] = int((remaining % 86400) // 3600)
-        
-        return result
-    
-    except Exception as e:
-        result["error"] = str(e)
+            result["error"] = "Token expired."
+            return result
+
+        result["valid"] = True
+        result["remaining_days"] = int(remaining // 86400)
+        result["remaining_hours"] = int((remaining % 86400) // 3600)
         return result
 
+    except (OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        result["error"] = str(exc)
+        return result
 
 def _get_worker_hosts() -> List[str]:
     """Get list of worker hosts from inventory."""
@@ -205,362 +219,384 @@ def _get_policy_files() -> List[str]:
 # UI SECTIONS
 # =============================================================
 
-def _render_environment_status() -> None:
-    """Render environment status overview."""
-    st.subheader("📊 Environment Status")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        tokens = list_policy_tokens()
-        st.metric("🔑 Tokens", len(tokens))
-        if tokens:
-            with st.expander("View tokens"):
-                for token in tokens:
-                    st.caption(f"• {token}")
-    
-    with col2:
-        policies = list_policies()
-        st.metric("📋 Policies", len(policies))
-        if policies:
-            with st.expander("View policies"):
-                for policy in policies:
-                    st.caption(f"• {policy}")
-    
-    with col3:
-        inventory = _parse_inventory()
-        workers = inventory.get("workers", [])
-        st.metric("🖥️ Workers", len(workers))
-        if workers:
-            with st.expander("View workers"):
-                for worker in workers:
-                    st.caption(f"• {worker}")
-    
-    with col4:
-        if os.path.exists(INVENTORY_PATH):
-            st.metric("📂 Inventory", "✓ Found")
-        else:
-            st.metric("📂 Inventory", "✗ Missing")
+def _start_policy_task(
+    *,
+    operation: str,
+    label: str,
+    command: list[str],
+    metadata: Dict[str, object],
+    session_key: str,
+    lock_name: str,
+) -> None:
+    """Start one policy task without persisting token material."""
+    task, error = start_task(
+        role="policy-manager",
+        operation=operation,
+        label=label,
+        command=command,
+        cwd=REPO_ROOT,
+        metadata=metadata,
+        lock_name=lock_name,
+    )
 
-
-def _render_token_management() -> None:
-    """Render token management section."""
-    st.subheader("🔑 Token Management")
-    
-    tokens = list_policy_tokens()
-    
-    if not tokens:
-        st.warning("No policy tokens found in policy_tokens/")
-        st.info("Place your policy_token.json file in the policy_tokens/ directory")
+    if error:
+        st.error(error)
         return
-    
-    st.markdown("#### Token Validity Check")
-    
-    # Check all tokens
-    for token_file in tokens:
-        token_path = os.path.join(POLICY_TOKENS_DIR, token_file)
-        
-        col1, col2 = st.columns([2, 3])
-        
-        with col1:
-            st.markdown(f"**{token_file}**")
-        
-        with col2:
-            result = _check_token_expiry(token_path)
-            
-            if result["error"]:
-                if "EXPIRED" in result["error"]:
-                    st.error(f"❌ {result['error']}")
-                else:
-                    st.warning(f"⚠️ {result['error']}")
-            elif result["valid"]:
-                days = result["remaining_days"]
-                hours = result["remaining_hours"]
-                st.success(f"✅ Valid — expires in {days}d {hours}h")
-            else:
-                st.error("❌ Invalid token")
+
+    st.session_state[session_key] = task["id"]
+    st.rerun()
 
 
-def _render_policy_upload() -> None:
-    """Render policy upload section."""
-    st.subheader("📤 Add Policy to Domain")
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.markdown("#### Select Token")
-        tokens = list_policy_tokens()
-        if not tokens:
-            st.error("No tokens found in policy_tokens/")
-            return
-        
-        selected_token = st.selectbox("Policy token", tokens, key="token_select")
-        token_path = os.path.join(POLICY_TOKENS_DIR, selected_token)
-        
-        # Check token validity
-        token_status = _check_token_expiry(token_path)
-        if token_status["error"]:
-            st.error(f"Token error: {token_status['error']}")
-            return
-        
-        if not token_status["valid"]:
-            st.error("Token is not valid")
-            return
-        
-        st.success(f"✅ Token valid for {token_status['remaining_days']}d {token_status['remaining_hours']}h")
-    
-    with col2:
-        st.markdown("#### Select Policy")
-        policies = _get_policy_files()
-        if not policies:
-            st.error("No .eflint policy files found in policies/")
-            return
-        
-        selected_policy = st.selectbox("Policy file", policies, key="policy_select")
-        policy_path = os.path.join(POLICIES_DIR, selected_policy)
-        
-        if os.path.exists(policy_path):
-            st.success(f"✅ Policy file found")
-        else:
-            st.error(f"Policy file not found: {policy_path}")
-            return
-    
-    st.divider()
-    
-    st.markdown("#### Worker Node Connection")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        workers = _get_worker_hosts()
-        if workers:
-            worker_host = st.selectbox("Worker host", workers, key="worker_select")
-        else:
-            worker_host = st.text_input("Worker IP/hostname", key="worker_input")
-    
-    with col2:
-        ssh_user = st.text_input("SSH user", value="ubuntu", key="ssh_user_input")
-    
-    with col3:
-        brane_port = st.text_input("brane-chk port", value="50051", key="port_input")
-    
-    # Test connection
-    if st.button("🔗 Test Connection", key="btn_test_conn"):
-        if not worker_host or not ssh_user:
-            st.error("Worker host and SSH user are required.")
-        else:
-            task, error = start_task(
-                role="policy-manager",
-                operation="policy_ssh_connectivity_check",
-                label=f"Check SSH connectivity: {ssh_user}@{worker_host}",
-                command=[
-                    "ssh",
-                    "-o", "BatchMode=yes",
-                    "-o", "ConnectTimeout=5",
-                    "-o", "StrictHostKeyChecking=accept-new",
-                    "-q",
-                    f"{ssh_user}@{worker_host}",
-                    "exit",
-                ],
-                cwd=REPO_ROOT,
-                metadata={
-                    "worker_host": worker_host,
-                    "ssh_user": ssh_user,
-                    "read_only": True,
-                },
-                lock_name="policy-ssh-connectivity-check",
-            )
-            if error:
-                st.error(error)
-            else:
-                st.session_state.policy_ssh_check_task_id = task["id"]
-                st.success("SSH connectivity check started in the background.")
-                st.rerun()
+def _render_policy_context() -> Dict[str, object]:
+    """Render the shared token and worker context for policy operations."""
+    st.subheader("Policy context")
+    st.caption(
+        "Choose the policy-manager token and target worker once. "
+        "The token is never displayed, stored in task metadata, or passed "
+        "as a command-line argument."
+    )
 
-    policy_ssh_check_task_id = st.session_state.get("policy_ssh_check_task_id")
-    if policy_ssh_check_task_id:
-        render_task_monitor(
-            policy_ssh_check_task_id,
-            title="Worker SSH connectivity check",
-        )
+    tokens = list_policy_tokens()
+    workers = _get_worker_hosts()
 
-    st.divider()
-    
-    # Upload and add policy
-    if st.button("📤 Upload & Add Policy", key="btn_add_policy", type="primary"):
-        if not worker_host or not ssh_user or not brane_port:
-            st.error("Worker host, SSH user, and brane-chk port are required.")
-        else:
-            task, error = start_task(
-                role="policy-manager",
-                operation="policy_upload_add",
-                label=f"Upload and add policy: {selected_policy}",
-                command=[
-                    sys.executable,
-                    str(Path(__file__).with_name("policy_upload_task.py")),
-                    "--policy-path",
-                    policy_path,
-                    "--token-path",
-                    token_path,
-                    "--worker-host",
-                    worker_host,
-                    "--ssh-user",
-                    ssh_user,
-                    "--brane-port",
-                    brane_port,
-                ],
-                cwd=REPO_ROOT,
-                metadata={
-                    "policy_file": selected_policy,
-                    "worker_host": worker_host,
-                    "ssh_user": ssh_user,
-                    "brane_port": brane_port,
-                },
-                lock_name="policy-upload-add",
-            )
-            if error:
-                st.error(error)
-            else:
-                st.session_state.policy_upload_task_id = task["id"]
-                st.success("Policy upload and add started in the background.")
-                st.rerun()
-
-    policy_upload_task_id = st.session_state.get("policy_upload_task_id")
-    if policy_upload_task_id:
-        render_task_monitor(
-            policy_upload_task_id,
-            title="Policy upload and add progress",
-        )
-
-
-def _render_policy_activation() -> None:
-    """Render task-backed policy version listing and activation."""
-    st.subheader("✅ Activate Policy Version")
-
-    token_column, connection_column = st.columns([1, 1])
+    token_column, worker_column, connection_column = st.columns([2, 2, 1])
 
     with token_column:
-        st.markdown("#### Select Token")
-        tokens = list_policy_tokens()
-        if not tokens:
-            st.error("No tokens found in policy_tokens/.")
-            return
+        if tokens:
+            selected_token = st.selectbox(
+                "Policy-manager token",
+                tokens,
+                key="policy_context_token",
+            )
+            token_path = os.path.join(POLICY_TOKENS_DIR, selected_token)
+            token_status = _check_token_expiry(token_path)
 
-        selected_token = st.selectbox(
-            "Policy token",
-            tokens,
-            key="token_select_activate",
-        )
-        token_path = os.path.join(POLICY_TOKENS_DIR, selected_token)
-        token_status = _check_token_expiry(token_path)
+            if token_status["valid"]:
+                st.success(
+                    "Token valid — "
+                    f"{token_status['remaining_days']}d "
+                    f"{token_status['remaining_hours']}h remaining"
+                )
+            else:
+                st.error(
+                    "Selected token is not usable: "
+                    f"{token_status['error'] or 'unknown error'}"
+                )
+        else:
+            selected_token = None
+            token_path = None
+            token_status = {"valid": False}
+            st.error("No policy-manager tokens were found in `policy_tokens/`.")
 
-        if token_status["error"] or not token_status["valid"]:
-            st.error("Selected token is not valid.")
-            return
-
-        st.success("✅ Token valid")
-
-    with connection_column:
-        st.markdown("#### Worker Node Connection")
-        workers = _get_worker_hosts()
+    with worker_column:
         if workers:
             worker_host = st.selectbox(
-                "Worker host",
+                "Target worker",
                 workers,
-                key="worker_select_activate",
+                key="policy_context_worker",
             )
         else:
             worker_host = st.text_input(
-                "Worker IP/hostname",
-                key="worker_input_activate",
+                "Target worker",
+                key="policy_context_worker_manual",
+                placeholder="Worker hostname or IP address",
+            )
+            st.caption(
+                "No worker was found in the inventory; enter the target manually."
             )
 
         ssh_user = st.text_input(
             "SSH user",
             value="ubuntu",
-            key="ssh_user_activate",
+            key="policy_context_ssh_user",
         )
+
+    with connection_column:
         brane_port = st.text_input(
-            "brane-chk port",
-            value="50051",
-            key="port_activate",
+            "Policy-store port",
+            value="50054",
+            key="policy_context_brane_port",
         )
 
-    def start_lifecycle_task(operation: str, version_id: str | None = None) -> None:
-        if not worker_host or not ssh_user or not brane_port:
-            st.error("Worker host, SSH user, and brane-chk port are required.")
-            return
+        if st.button("Check SSH", key="policy_context_check_ssh"):
+            if not worker_host.strip() or not ssh_user.strip():
+                st.error("A target worker and SSH user are required.")
+            else:
+                _start_policy_task(
+                    operation="policy_ssh_connectivity_check",
+                    label=f"Check SSH connectivity: {ssh_user.strip()}@{worker_host.strip()}",
+                    command=[
+                        "ssh",
+                        "-o", "BatchMode=yes",
+                        "-o", "ConnectTimeout=5",
+                        "-o", "StrictHostKeyChecking=accept-new",
+                        "-q",
+                        f"{ssh_user.strip()}@{worker_host.strip()}",
+                        "exit",
+                    ],
+                    metadata={
+                        "worker_host": worker_host.strip(),
+                        "ssh_user": ssh_user.strip(),
+                        "read_only": True,
+                    },
+                    session_key="policy_ssh_check_task_id",
+                    lock_name="policy-ssh-connectivity-check",
+                )
 
-        command = [
-            sys.executable,
-            str(Path(__file__).with_name("policy_lifecycle_task.py")),
-            operation,
-            "--token-path",
-            token_path,
-            "--worker-host",
-            worker_host,
-            "--ssh-user",
-            ssh_user,
-            "--brane-port",
-            brane_port,
-        ]
-        if version_id:
-            command.extend(["--version-id", version_id])
+    ssh_task_id = st.session_state.get("policy_ssh_check_task_id")
+    if ssh_task_id:
+        render_task_monitor(ssh_task_id, title="Worker SSH connectivity check")
 
-        label = (
-            f"List policies: {worker_host}"
-            if operation == "list"
-            else f"Activate policy {version_id}: {worker_host}"
-        )
+    return {
+        "ready": bool(
+            token_path
+            and token_status["valid"]
+            and worker_host.strip()
+            and ssh_user.strip()
+            and brane_port.strip()
+        ),
+        "token_name": selected_token,
+        "token_path": token_path,
+        "worker_host": worker_host.strip(),
+        "ssh_user": ssh_user.strip(),
+        "brane_port": brane_port.strip(),
+    }
 
-        task, error = start_task(
-            role="policy-manager",
-            operation=f"policy_{operation}",
-            label=label,
-            command=command,
-            cwd=REPO_ROOT,
+
+def _render_policy_status(context: Dict[str, object]) -> None:
+    """Render local policy resources and fetch the remote active-policy status."""
+    st.subheader("Policy status")
+
+    policies = _get_policy_files()
+    tokens = list_policy_tokens()
+    workers = _get_worker_hosts()
+
+    metric_one, metric_two, metric_three = st.columns(3)
+    metric_one.metric("Local policy files", len(policies))
+    metric_two.metric("Available tokens", len(tokens))
+    metric_three.metric("Inventory workers", len(workers))
+
+    st.caption(
+        "The deployment starts deny-all by default. A workflow remains denied "
+        "until an appropriate uploaded policy version is activated."
+    )
+
+    if st.button(
+        "Inspect policy state",
+        key="policy_inspect_state",
+        disabled=not context["ready"],
+    ):
+        _start_policy_task(
+            operation="policy_list",
+            label=f"Inspect policy state: {context['worker_host']}",
+            command=[
+                sys.executable,
+                str(Path(__file__).with_name("policy_lifecycle_task.py")),
+                "list",
+                "--token-path", str(context["token_path"]),
+                "--worker-host", str(context["worker_host"]),
+                "--ssh-user", str(context["ssh_user"]),
+                "--brane-port", str(context["brane_port"]),
+            ],
             metadata={
-                "worker_host": worker_host,
-                "ssh_user": ssh_user,
-                "brane_port": brane_port,
-                "version_id": version_id,
+                "worker_host": context["worker_host"],
+                "ssh_user": context["ssh_user"],
+                "brane_port": context["brane_port"],
+                "read_only": True,
             },
+            session_key="policy_inspect_task_id",
             lock_name="policy-lifecycle",
         )
 
-        if error:
-            st.error(error)
-        else:
-            st.session_state.policy_lifecycle_task_id = task["id"]
-            st.success("Policy lifecycle task started in the background.")
-            st.rerun()
+    if not context["ready"]:
+        st.info("Select a valid token and complete the worker context to inspect policy state.")
 
-    st.divider()
-    st.markdown("#### Available Policy Versions")
+    task_id = st.session_state.get("policy_inspect_task_id")
+    if task_id:
+        render_task_monitor(task_id, title="Policy versions and active state")
 
-    if st.button("📋 List Policy Versions", key="btn_list_versions"):
-        start_lifecycle_task("list")
 
-    st.divider()
-    st.markdown("#### Activate Version")
-
-    version_id = st.text_input(
-        "Policy version ID to activate",
-        key="version_id_input",
+def _render_policy_upload(context: Dict[str, object]) -> None:
+    """Render policy selection and upload through the existing secure helper."""
+    st.subheader("Upload policy version")
+    st.caption(
+        "Uploading adds a version to the target worker. It does not activate "
+        "that version or change the policy currently enforced."
     )
 
-    if st.button("✅ Activate Policy", key="btn_activate_policy", type="primary"):
-        if not version_id:
-            st.error("Policy version ID is required.")
-        else:
-            start_lifecycle_task("activate", version_id)
+    policies = _get_policy_files()
+    if not policies:
+        st.warning("No `.eflint` policy files were found in `policies/`.")
+        return
 
-    task_id = st.session_state.get("policy_lifecycle_task_id")
-    if task_id:
-        render_task_monitor(
-            task_id,
-            title="Policy lifecycle task progress",
+    selected_policy = st.selectbox(
+        "Local eFLINT policy",
+        policies,
+        key="policy_upload_file",
+    )
+    policy_path = os.path.join(POLICIES_DIR, selected_policy)
+
+    if st.button(
+        "Upload and add policy version",
+        key="policy_upload_add",
+        type="primary",
+        disabled=not context["ready"],
+    ):
+        _start_policy_task(
+            operation="policy_upload_add",
+            label=f"Upload policy: {selected_policy}",
+            command=[
+                sys.executable,
+                str(Path(__file__).with_name("policy_upload_task.py")),
+                "--policy-path", policy_path,
+                "--token-path", str(context["token_path"]),
+                "--worker-host", str(context["worker_host"]),
+                "--ssh-user", str(context["ssh_user"]),
+                "--brane-port", str(context["brane_port"]),
+            ],
+            metadata={
+                "policy_file": selected_policy,
+                "worker_host": context["worker_host"],
+                "ssh_user": context["ssh_user"],
+                "brane_port": context["brane_port"],
+            },
+            session_key="policy_upload_task_id",
+            lock_name="policy-upload-add",
         )
+
+    task_id = st.session_state.get("policy_upload_task_id")
+    if task_id:
+        render_task_monitor(task_id, title="Policy upload progress")
+
+
+def _render_policy_activation(context: Dict[str, object]) -> None:
+    """Render version inspection and activation using the existing API helper."""
+    st.subheader("Activate policy version")
+    st.warning(
+        "Activating a version changes the policy enforced on the selected worker."
+    )
+
+    list_column, activate_column = st.columns(2)
+
+    with list_column:
+        st.markdown("#### 1. Inspect available versions")
+        st.caption(
+            "List versions after an upload and copy the version ID returned by "
+            "the worker."
+        )
+
+        if st.button(
+            "List policy versions",
+            key="policy_list_versions",
+            disabled=not context["ready"],
+        ):
+            _start_policy_task(
+                operation="policy_list",
+                label=f"List policy versions: {context['worker_host']}",
+                command=[
+                    sys.executable,
+                    str(Path(__file__).with_name("policy_lifecycle_task.py")),
+                    "list",
+                    "--token-path", str(context["token_path"]),
+                    "--worker-host", str(context["worker_host"]),
+                    "--ssh-user", str(context["ssh_user"]),
+                    "--brane-port", str(context["brane_port"]),
+                ],
+                metadata={
+                    "worker_host": context["worker_host"],
+                    "ssh_user": context["ssh_user"],
+                    "brane_port": context["brane_port"],
+                    "read_only": True,
+                },
+                session_key="policy_list_task_id",
+                lock_name="policy-lifecycle",
+            )
+
+        list_task_id = st.session_state.get("policy_list_task_id")
+        if list_task_id:
+            render_task_monitor(list_task_id, title="Available policy versions")
+
+    with activate_column:
+        st.markdown("#### 2. Activate a selected version")
+        version_id = st.text_input(
+            "Policy version ID",
+            key="policy_activate_version_id",
+        )
+        confirm_activation = st.checkbox(
+            "I understand that this changes the policy enforced on the worker.",
+            key="policy_confirm_activation",
+        )
+
+        if st.button(
+            "Activate selected version",
+            key="policy_activate_version",
+            type="primary",
+            disabled=not (
+                context["ready"] and version_id.strip() and confirm_activation
+            ),
+        ):
+            _start_policy_task(
+                operation="policy_activate",
+                label=(
+                    f"Activate policy {version_id.strip()}: "
+                    f"{context['worker_host']}"
+                ),
+                command=[
+                    sys.executable,
+                    str(Path(__file__).with_name("policy_lifecycle_task.py")),
+                    "activate",
+                    "--token-path", str(context["token_path"]),
+                    "--worker-host", str(context["worker_host"]),
+                    "--ssh-user", str(context["ssh_user"]),
+                    "--brane-port", str(context["brane_port"]),
+                    "--version-id", version_id.strip(),
+                ],
+                metadata={
+                    "worker_host": context["worker_host"],
+                    "ssh_user": context["ssh_user"],
+                    "brane_port": context["brane_port"],
+                    "version_id": version_id.strip(),
+                },
+                session_key="policy_activate_task_id",
+                lock_name="policy-lifecycle",
+            )
+
+        activate_task_id = st.session_state.get("policy_activate_task_id")
+        if activate_task_id:
+            render_task_monitor(
+                activate_task_id,
+                title="Policy activation and verification",
+            )
+
+
+def _render_token_management() -> None:
+    """Display locally available policy-manager tokens and expiry state."""
+    st.subheader("Policy-manager tokens")
+    st.caption(
+        "Tokens are supplied by an administrator and must be stored locally in "
+        "`policy_tokens/`. Their values are not displayed."
+    )
+
+    tokens = list_policy_tokens()
+    if not tokens:
+        st.warning("No policy-manager tokens were found in `policy_tokens/`.")
+        return
+
+    for token_file in tokens:
+        token_path = os.path.join(POLICY_TOKENS_DIR, token_file)
+        token_status = _check_token_expiry(token_path)
+
+        name_column, status_column = st.columns([2, 3])
+        with name_column:
+            st.code(token_file, language=None)
+        with status_column:
+            if token_status["valid"]:
+                st.success(
+                    f"Valid — expires in {token_status['remaining_days']}d "
+                    f"{token_status['remaining_hours']}h"
+                )
+            else:
+                st.error(token_status["error"] or "Invalid token")
 
 
 # =============================================================
@@ -568,81 +604,50 @@ def _render_policy_activation() -> None:
 # =============================================================
 
 def render_policy_manager_dashboard() -> None:
-    """
-    Render the complete policy manager dashboard.
-    
-    Function Purpose:
-        Displays the policy management interface including token 
-        management, policy upload, and policy activation capabilities.
-    
-    Parameters:
-        None
-    
-    Returns:
-        None
-    """
-    st.title("🔐 Policy Manager Dashboard")
-    st.markdown("Manage eFLINT policies and domain access control")
+    """Render the policy lifecycle workspace for one target worker."""
+    st.title("Policy Manager Workspace")
+    st.markdown(
+        "Manage eFLINT policy versions for a worker domain: inspect policy "
+        "state, upload a version, and explicitly activate it."
+    )
+
+    context = _render_policy_context()
+
     st.divider()
-    
-    # Tabs for different sections
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Status",
-        "🔑 Tokens",
-        "📤 Add Policy",
-        "✅ Activate Policy",
-    ])
-    
-    with tab1:
-        _render_environment_status()
-    
-    with tab2:
+    status_tab, upload_tab, activate_tab, tokens_tab = st.tabs(
+        [
+            "Policy status",
+            "Upload version",
+            "Activate version",
+            "Tokens",
+        ]
+    )
+
+    with status_tab:
+        _render_policy_status(context)
+
+    with upload_tab:
+        _render_policy_upload(context)
+
+    with activate_tab:
+        _render_policy_activation(context)
+
+    with tokens_tab:
         _render_token_management()
-    
-    with tab3:
-        _render_policy_upload()
-    
-    with tab4:
-        _render_policy_activation()
-    
+
     st.divider()
-    
-    # Footer with guidance
-    with st.expander("📖 Policy Manager Guide"):
-        st.markdown("""
-        ### Policy Lifecycle
-        
-        1. **Prepare Token** (tab: Tokens)
-           - Ensure your policy_token.json is in policy_tokens/
-           - Check token validity (must not be expired)
-        
-        2. **Add Policy** (tab: Add Policy)
-           - Select policy token
-           - Select .eflint policy file
-           - Provide worker node connection details
-           - Upload and add policy to domain
-           - Note the version ID returned
-        
-        3. **Activate Policy** (tab: Activate Policy)
-           - Select policy token
-           - List available policy versions
-           - Select version ID to activate
-           - Verify active policy is set
-        
-        ### Key Concepts
-        
-        - **Policy Token**: JWT token with policy expert permissions
-        - **Policy Version**: Unique ID for each uploaded policy
-        - **Active Policy**: The policy version currently enforced on the domain
-        - **Worker Domain**: The Brane worker node where policy is enforced
-        
-        ### Troubleshooting
-        
-        - **Token Expired?** - Request a new one from your Brane admin
-        - **SSH Connection Failed?** - Check SSH keys and network connectivity
-        - **Policy Activation Denied?** - Verify token has correct permissions
-        - **Workflow Still Denied?** - Check policy rules permit the task
-        """)
+    with st.expander("Policy lifecycle guide"):
+        st.markdown(
+            """1. Select a valid **policy-manager token** and target worker.
+2. Use **Check active policy** to establish the currently enforced state.
+3. Upload a local `.eflint` file to add a policy version. Uploading does not activate it.
+4. List policy versions and copy the intended version ID.
+5. Confirm and activate that version. The task verifies the active policy afterwards.
+
+A failed or missing policy activation normally leaves workflows denied because
+the deployment uses a deny-all default. Ask an administrator for a replacement
+token if the selected token is expired or lacks the necessary authority."""
+        )
 
 
 # =============================================================
