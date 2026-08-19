@@ -104,14 +104,9 @@ PAGES = {
         "role": "admin",
         "render": render_cluster_config,
     },
-    "admin_packages": {
-        "label": "Packages & registry",
-        "role": "admin",
-        "render": render_packages_deploy,
-    },
-    "admin_cli": {
-        "label": "CLI & local tools",
-        "role": "admin",
+    "workstation_setup": {
+        "label": "Workstation setup",
+        "role": None,
         "render": render_cli_panel,
     },
     "policy_overview": {
@@ -174,6 +169,7 @@ with st.sidebar:
     st.caption("Choose a workspace based on the task you need to perform.")
 
     render_navigation_button("home")
+    render_navigation_button("workstation_setup")
 
     with st.expander(
         "⚙️ Administration",
@@ -184,8 +180,6 @@ with st.sidebar:
             "admin_overview",
             "admin_infrastructure",
             "admin_cluster",
-            "admin_packages",
-            "admin_cli",
         ):
             render_navigation_button(page_id)
 
