@@ -6,7 +6,7 @@
 #
 # Description:
 #   Streamlit module for the User role dashboard.
-#   Provides workflow authoring, package management, and 
+#   Provides workflow authoring, package management, and
 #   workflow execution capabilities for end users.
 #
 #   Mirrors the functionality of brane_helper_user.sh:
@@ -26,7 +26,7 @@
 #   8. Display workflow execution results
 #
 # Design Pattern:
-#   Streamlit View Module - Implements render_user_dashboard() 
+#   Streamlit View Module - Implements render_user_dashboard()
 #   function that displays the user workflow interface.
 #
 # Key Features:
@@ -47,8 +47,10 @@
 
 import os
 import subprocess
+from pathlib import Path
+
 import streamlit as st
-from typing import Optional, List
+from typing import List
 
 from modules import task_manager
 from modules.task_ui import render_task_monitor
@@ -60,6 +62,7 @@ from modules.config import (
     list_packages,
     list_certs,
     list_datasets,
+    get_brane_executable,
 )
 
 
@@ -97,26 +100,6 @@ def _get_instances() -> List[str]:
     return instances
 
 
-def _get_workflows() -> List[str]:
-    """
-    Get list of available workflow files (.bs).
-    
-    Returns:
-        List of workflow file paths relative to PACKAGES_DIR
-    """
-    workflows = []
-    try:
-        for root, dirs, files in os.walk(PACKAGES_DIR):
-            for file in files:
-                if file.endswith('.bs'):
-                    full_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(full_path, PACKAGES_DIR)
-                    workflows.append(rel_path)
-    except Exception:
-        pass
-    return sorted(workflows)
-
-
 # =============================================================
 # UI SECTIONS
 # =============================================================
@@ -124,9 +107,9 @@ def _get_workflows() -> List[str]:
 def _render_environment_status() -> None:
     """Render environment status overview."""
     st.subheader("📊 Environment Status")
-    
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         packages = list_packages()
         st.metric("📦 Packages", len(packages))
@@ -134,7 +117,7 @@ def _render_environment_status() -> None:
             with st.expander("View packages"):
                 for pkg in packages:
                     st.caption(f"• {pkg}")
-    
+
     with col2:
         certs = list_certs()
         st.metric("🔐 Certificates", len(certs))
@@ -142,7 +125,7 @@ def _render_environment_status() -> None:
             with st.expander("View certificates"):
                 for cert in certs:
                     st.caption(f"• {cert}")
-    
+
     with col3:
         datasets = list_datasets()
         st.metric("📂 Datasets", len(datasets))
@@ -153,28 +136,33 @@ def _render_environment_status() -> None:
 
 
 def _render_instance_management() -> None:
-    """Render instance management section."""
-    st.subheader("🖥️ Instance Management")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### List Instances")
-        if st.button("📋 Show Instances", key="btn_list_instances"):
+    """Render normal and advanced configured-instance management."""
+    st.subheader("Configured instances")
+    st.markdown(
+        "Add the Central Brane endpoint that you will select in Workflow Studio "
+        "for remote workflow execution."
+    )
+
+    left_column, right_column = st.columns(2)
+
+    with left_column:
+        st.markdown("#### Inspect instances")
+
+        if st.button("Refresh configured instances", key="btn_list_instances"):
             task, error = task_manager.start_task(
                 role="user",
                 operation="instance_list",
                 label="List configured instances",
-                command=["brane", "instance", "list"],
+                command=[get_brane_executable(), "instance", "list"],
                 cwd=os.path.dirname(PACKAGES_DIR),
                 metadata={"read_only": True},
                 lock_name="instance-list",
             )
+
             if error:
                 st.error(error)
             else:
                 st.session_state.user_instance_list_task_id = task["id"]
-                st.success("Instance listing started in the background.")
                 st.rerun()
 
         instance_list_task_id = st.session_state.get("user_instance_list_task_id")
@@ -184,61 +172,91 @@ def _render_instance_management() -> None:
                 title="Configured instances",
             )
 
-    with col2:
-        st.markdown("#### Add Instance")
+    with right_column:
+        st.markdown("#### Add instance")
+
         with st.form("add_instance_form"):
-            host = st.text_input("Central node IP/hostname")
-            instance_name = st.text_input("Instance name")
-            submitted = st.form_submit_button("Add Instance")
-            
-            if submitted:
-                if not host or not instance_name:
-                    st.error("Both fields are required")
+            host = st.text_input(
+                "Central node address",
+                placeholder="e.g. central.example.org or 145.100.135.209",
+            )
+            instance_name = st.text_input(
+                "Instance name",
+                placeholder="e.g. uva-central",
+            )
+
+            with st.expander("Advanced connection options"):
+                st.caption(
+                    "Use these only when instructed by the deployment "
+                    "administrator. They reduce normal connection safeguards."
+                )
+                skip_validation = st.checkbox(
+                    "Skip endpoint validation",
+                    key="instance_skip_validation",
+                )
+                replace_existing = st.checkbox(
+                    "Force replacement of an existing configuration",
+                    key="instance_replace_existing",
+                )
+
+            submitted = st.form_submit_button("Add instance", type="primary")
+
+        if submitted:
+            if not host.strip() or not instance_name.strip():
+                st.error("Central node address and instance name are required.")
+            else:
+                command = [
+                    get_brane_executable(),
+                    "instance",
+                    "add",
+                    host.strip(),
+                    "--name",
+                    instance_name.strip(),
+                    "--use",
+                ]
+
+                if skip_validation:
+                    command.append("--unchecked")
+                if replace_existing:
+                    command.append("--force")
+
+                task, error = task_manager.start_task(
+                    role="user",
+                    operation="instance_add",
+                    label=f"Add instance: {instance_name.strip()}",
+                    command=command,
+                    cwd=os.path.dirname(PACKAGES_DIR),
+                    metadata={
+                        "host": host.strip(),
+                        "instance_name": instance_name.strip(),
+                        "unchecked": skip_validation,
+                        "force": replace_existing,
+                        "select_after_add": True,
+                    },
+                    lock_name="instance-management",
+                )
+
+                if error:
+                    st.error(error)
                 else:
-                    task, error = task_manager.start_task(
-                        role="user",
-                        operation="instance_add",
-                        label=f"Add instance: {instance_name}",
-                        command=[
-                            "brane",
-                            "instance",
-                            "add",
-                            host,
-                            "--name",
-                            instance_name,
-                            "--use",
-                            "--unchecked",
-                            "--force",
-                        ],
-                        cwd=os.path.dirname(PACKAGES_DIR),
-                        metadata={
-                            "host": host,
-                            "instance_name": instance_name,
-                            "unchecked": True,
-                            "force": True,
-                            "select_after_add": True,
-                        },
-                        lock_name="instance-management",
-                    )
-                    if error:
-                        st.error(error)
-                    else:
-                        st.session_state.user_instance_add_task_id = task["id"]
-                        st.success("Instance creation started in the background.")
-                        st.rerun()
+                    st.session_state.user_instance_add_task_id = task["id"]
+                    st.success("Instance configuration started in the background.")
+                    st.rerun()
 
     instance_add_task_id = st.session_state.get("user_instance_add_task_id")
     if instance_add_task_id:
-        render_task_monitor(instance_add_task_id, title="Instance creation progress")
-
+        render_task_monitor(
+            instance_add_task_id,
+            title="Instance configuration progress",
+        )
 
 
 def _render_package_management() -> None:
     """Render package management section."""
     st.subheader("📦 Package Management")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown("#### Build Package")
         packages = list_packages()
@@ -281,7 +299,7 @@ def _render_package_management() -> None:
                         st.rerun()
         else:
             st.info("No packages found in packages/ directory")
-    
+
     with col2:
         st.markdown("#### List Built Packages")
         if st.button("📋 Show Built Packages", key="btn_list_built_pkg"):
@@ -313,158 +331,141 @@ def _render_package_management() -> None:
         render_task_monitor(package_build_task_id, title="Package build progress")
 
 
-def _render_workflow_execution() -> None:
-    """Render workflow execution section."""
-    st.subheader("⚙️ Workflow Execution")
-    
-    col1, col2 = st.columns(2)
-    
-    workflows = _get_workflows()
-    
-    if not workflows:
-        st.warning("No .bs workflow files found in packages/")
-        return
-    
-    with col1:
-        st.markdown("#### Run Locally")
-        selected_wf = st.selectbox(
-            "Select workflow",
-            workflows,
-            key="wf_select_local"
-        )
-        username = st.text_input(
-            "Username",
-            value="test",
-            key="wf_username_local"
-        )
-        if st.button("▶️ Run Locally", key="btn_run_local_wf"):
-            wf_path = os.path.join(PACKAGES_DIR, selected_wf)
-            if not os.path.exists(wf_path):
-                st.error(f"Workflow not found: {wf_path}")
-            else:
-                task, error = task_manager.start_task(
-                    role="user",
-                    operation="workflow_run_local",
-                    label=f"Local workflow: {selected_wf}",
-                    command=["brane", "workflow", "run", username, wf_path],
-                    cwd=os.path.dirname(PACKAGES_DIR),
-                    metadata={
-                        "mode": "local",
-                        "username": username,
-                        "workflow": selected_wf,
-                    },
-                    lock_name="workflow-execution",
-                )
-                if error:
-                    st.error(error)
-                else:
-                    st.session_state.user_local_workflow_task_id = task["id"]
-                    st.success("Local workflow started in the background.")
-                    st.rerun()
+def _certificate_bundle_paths(certificate_name: str) -> tuple[Path, Path, Path]:
+    """Return expected certificate paths without reading private-key contents."""
+    bundle_directory = Path(CERTS_DIR) / certificate_name
+    ca_path = bundle_directory / "ca.pem"
+    client_path = bundle_directory / "client.pem"
 
-    with col2:
-        st.markdown("#### Run Remotely")
-        instances = _get_instances()
-        if instances:
-            selected_instance = st.selectbox(
-                "Select instance",
-                instances,
-                key="wf_select_instance"
-            )
-            selected_wf_remote = st.selectbox(
-                "Select workflow",
-                workflows,
-                key="wf_select_remote"
-            )
-            username_remote = st.text_input(
-                "Username",
-                value="test",
-                key="wf_username_remote"
-            )
-            if st.button("▶️ Run Remotely", key="btn_run_remote_wf"):
-                wf_path = os.path.join(PACKAGES_DIR, selected_wf_remote)
-                if not os.path.exists(wf_path):
-                    st.error(f"Workflow not found: {wf_path}")
-                else:
-                    runner_path = os.path.join(
-                        os.path.dirname(PACKAGES_DIR),
-                        "scripts",
-                        "run_remote_workflow.py",
-                    )
-                    task, error = task_manager.start_task(
-                        role="user",
-                        operation="workflow_run_remote",
-                        label=f"Remote workflow: {selected_wf_remote}",
-                        command=[
-                            "python3",
-                            runner_path,
-                            "--instance",
-                            selected_instance,
-                            "--username",
-                            username_remote,
-                            "--workflow",
-                            wf_path,
-                        ],
-                        cwd=os.path.dirname(PACKAGES_DIR),
-                        metadata={
-                            "mode": "remote",
-                            "instance": selected_instance,
-                            "username": username_remote,
-                            "workflow": selected_wf_remote,
-                        },
-                        lock_name="workflow-execution",
-                    )
-                    if error:
-                        st.error(error)
-                    else:
-                        st.session_state.user_remote_workflow_task_id = task["id"]
-                        st.success("Remote workflow submission started in the background.")
-                        st.rerun()
-        else:
-            st.warning("No instances configured. Use Instance Management to add one.")
+    if not client_path.is_file():
+        client_path = bundle_directory / "client-id.pem"
 
-
-    local_task_id = st.session_state.get("user_local_workflow_task_id")
-    if local_task_id:
-        render_task_monitor(local_task_id, title="Local workflow progress")
-
-    remote_task_id = st.session_state.get("user_remote_workflow_task_id")
-    if remote_task_id:
-        render_task_monitor(remote_task_id, title="Remote workflow progress")
+    key_path = bundle_directory / "client-key.pem"
+    return ca_path, client_path, key_path
 
 
 def _render_certificate_management() -> None:
-    """Render certificate management section."""
-    st.subheader("🔐 Certificate Management")
-    
-    st.info(
-        """
-        Certificates are stored in: `certs/<node>/`
-        
-        Each node directory should contain:
-        - `ca.pem` - Certificate Authority
-        - `client.pem` or `client-id.pem` - Client certificate
-        - `client-key.pem` - Client private key
-        """
+    """Render certificate-bundle inspection and task-backed registration."""
+    st.subheader("Certificate bundles")
+    st.markdown(
+        "Select a local certificate bundle for a Brane domain. Certificate "
+        "contents and private keys are never displayed in this interface."
     )
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### View Certificates")
-        certs = list_certs()
-        if certs:
-            for cert in certs:
-                st.caption(f"✓ {cert}")
+
+    certificate_names = list_certs()
+
+    if not certificate_names:
+        st.info(
+            "No certificate bundles were found. Store a bundle in "
+            "`certs/<domain>/` containing `ca.pem`, `client.pem` or "
+            "`client-id.pem`, and `client-key.pem`."
+        )
+        return
+
+    bundle_rows = []
+    for certificate_name in certificate_names:
+        ca_path, client_path, key_path = _certificate_bundle_paths(certificate_name)
+        missing_files = [
+            label
+            for label, file_path in {
+                "CA certificate": ca_path,
+                "Client certificate": client_path,
+                "Client private key": key_path,
+            }.items()
+            if not file_path.is_file()
+        ]
+
+        bundle_rows.append(
+            {
+                "Domain directory": certificate_name,
+                "Status": (
+                    "Ready to register"
+                    if not missing_files
+                    else f"Missing: {', '.join(missing_files)}"
+                ),
+            }
+        )
+
+    st.dataframe(bundle_rows, use_container_width=True, hide_index=True)
+
+    ready_certificates = [
+        certificate_name
+        for certificate_name in certificate_names
+        if all(
+            file_path.is_file()
+            for file_path in _certificate_bundle_paths(certificate_name)
+        )
+    ]
+
+    if not ready_certificates:
+        st.warning(
+            "No complete certificate bundle is available for registration. "
+            "Complete one bundle before continuing."
+        )
+        return
+
+    st.markdown("#### Register certificate bundle")
+
+    with st.form("register_certificate_form"):
+        selected_certificate = st.selectbox(
+            "Certificate bundle",
+            ready_certificates,
+            help="The directory name normally matches the Brane domain ID.",
+        )
+        domain_name = st.text_input(
+            "Brane domain ID",
+            value=selected_certificate,
+            help="Confirm the domain ID used by the selected certificate bundle.",
+        )
+        submitted = st.form_submit_button(
+            "Register certificate",
+            type="primary",
+        )
+
+    if submitted:
+        if not domain_name.strip():
+            st.error("A Brane domain ID is required.")
+            return
+
+        ca_path, client_path, key_path = _certificate_bundle_paths(
+            selected_certificate
+        )
+
+        task, error = task_manager.start_task(
+            role="user",
+            operation="certificate_register",
+            label=f"Register certificate: {domain_name.strip()}",
+            command=[
+                get_brane_executable(),
+                "certs",
+                "add",
+                str(ca_path),
+                str(client_path),
+                str(key_path),
+                "--domain",
+                domain_name.strip(),
+            ],
+            cwd=os.path.dirname(PACKAGES_DIR),
+            metadata={
+                "certificate_bundle": selected_certificate,
+                "domain": domain_name.strip(),
+            },
+            lock_name="certificate-registration",
+        )
+
+        if error:
+            st.error(error)
         else:
-            st.info("No certificates found")
-    
-    with col2:
-        st.markdown("#### Add Certificate")
-        st.markdown("Manually place certificate files in:")
-        st.code(f"{CERTS_DIR}/<node>/")
-        st.markdown("Then use the Brane CLI:")
-        st.code("brane certs add <ca.pem> <client.pem> <client-key.pem> --domain <node>")
+            st.session_state.user_certificate_register_task_id = task["id"]
+            st.success("Certificate registration started in the background.")
+            st.rerun()
+
+    task_id = st.session_state.get("user_certificate_register_task_id")
+    if task_id:
+        render_task_monitor(
+            task_id,
+            title="Certificate registration progress",
+        )
 
 
 # =============================================================
@@ -472,78 +473,67 @@ def _render_certificate_management() -> None:
 # =============================================================
 
 def render_user_dashboard() -> None:
-    """
-    Render the complete user dashboard.
-    
-    Function Purpose:
-        Displays the user workflow interface including environment 
-        status, instance management, package building, and workflow 
-        execution capabilities.
-    
-    Parameters:
-        None
-    
-    Returns:
-        None
-    """
-    st.title("👤 User Dashboard")
-    st.markdown("Manage packages, instances, and run workflows")
+    """Render the user workspace readiness and resource-management dashboard."""
+    st.title("User Workspace")
+    st.markdown(
+        "Prepare your local Brane environment, manage reusable resources, "
+        "and then create and run workflows in **Workflow Studio**."
+    )
+
+    if st.button(
+        "Open Workflow Studio",
+        key="open_workflow_studio",
+        type="primary",
+    ):
+        st.session_state.requested_page = "user_workflows"
+        st.rerun()
+
     st.divider()
-    
-    # Tabs for different sections
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📊 Status",
-        "🖥️ Instances",
-        "📦 Packages",
-        "⚙️ Workflows",
-        "🔐 Certificates",
-    ])
-    
-    with tab1:
+
+    readiness_tab, instances_tab, packages_tab, certificates_tab = st.tabs(
+        [
+            "Workspace readiness",
+            "Instances",
+            "Packages",
+            "Certificates",
+        ]
+    )
+
+    with readiness_tab:
         _render_environment_status()
-    
-    with tab2:
+        st.info(
+            "Typical sequence: configure an instance, register the applicable "
+            "certificate, build a package, then open Workflow Studio."
+        )
+
+    with instances_tab:
         _render_instance_management()
-    
-    with tab3:
+
+    with packages_tab:
         _render_package_management()
-    
-    with tab4:
-        _render_workflow_execution()
-    
-    with tab5:
+
+    with certificates_tab:
         _render_certificate_management()
-    
+
     st.divider()
-    
-    # Footer with guidance
-    with st.expander("📖 User Guide"):
-        st.markdown("""
-        ### Typical User Workflow
-        
-        1. **Setup Instance** (tab: Instances)
-           - Get central node IP from your admin
-           - Add instance with your instance name
-        
-        2. **Add Certificates** (tab: Certificates)
-           - Place certificate files in `certs/<node>/`
-           - Use Brane CLI to register them
-        
-        3. **Build Package** (tab: Packages)
-           - Select a package from `packages/`
-           - Click "Build Package"
-        
-        4. **Run Workflow** (tab: Workflows)
-           - Select a `.bs` workflow file
-           - Run locally or on remote domain
-           - Monitor execution results
-        
-        ### Common Issues
-        
-        - **Execution Denied?** - Policy manager needs to activate a policy
-        - **Connection Failed?** - Check instance IP and network connectivity
-        - **Certificate Error?** - Ensure certificate has digitalSignature and clientAuth extensions
-        """)
+
+    with st.expander("User guide"):
+        st.markdown(
+            """### Typical workflow
+
+1. **Configure an instance** in the Instances tab.
+2. **Confirm the required certificate bundle** in the Certificates tab.
+3. **Build a package** for the deployment architecture in the Packages tab.
+4. Open **Workflow Studio** to author, submit, and monitor a workflow.
+
+### Common issues
+
+- **Execution denied:** a Policy Manager must activate the applicable policy.
+- **Connection failed:** confirm the configured instance address and network access.
+- **Certificate error:** confirm that the selected certificate supports
+  `digitalSignature` and `clientAuth`.
+"""
+        )
 
 
 # =============================================================
