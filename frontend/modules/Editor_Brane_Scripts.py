@@ -1,205 +1,234 @@
-import os
+import re
 import subprocess
-import threading
-import queue
-import time
+import sys
+from pathlib import Path
+from typing import List
+
 import streamlit as st
 
-# Setup Local Script Workspaces
-SCRIPT_DIR = os.path.abspath("./workflow_codes/")
-os.makedirs(SCRIPT_DIR, exist_ok=True)
-
-# Initialize cross-thread communication primitives
-if "script_log_queue" not in st.session_state:
-    st.session_state.script_log_queue = queue.Queue()
-if "global_script_status" not in st.session_state:
-    st.session_state.global_script_status = "idle"
-if "global_script_logs" not in st.session_state:
-    st.session_state.global_script_logs = []
+from modules import task_manager
+from modules.config import REPO_ROOT, get_brane_executable
+from modules.task_ui import render_task_monitor
 
 
-def async_script_worker(cmd, log_queue):
-    """Independent background OS thread worker managing BraneScript executions."""
+WORKFLOW_DIR = Path(REPO_ROOT) / "workflow_codes"
+REMOTE_RUNNER = Path(__file__).with_name("run_remote_workflow.py")
+SCRIPT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\.bs$")
+
+
+def _get_instances() -> List[str]:
+    """Return configured local Brane instance names."""
     try:
-        process = subprocess.Popen(
-            cmd, cwd=SCRIPT_DIR,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        result = subprocess.run(
+            [get_brane_executable(), "instance", "list"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
-        
-        for line in iter(process.stdout.readline, ''):
-            log_queue.put({"type": "log", "content": line})
-            
-        process.stdout.close()
-        return_code = process.wait()
-        
-        if return_code == 0:
-            log_queue.put({"type": "status", "content": "success"})
-        else:
-            log_queue.put({"type": "log", "content": f"\n❌ Runtime terminated with error code: {return_code}\n"})
-            log_queue.put({"type": "status", "content": "failed"})
-            
-    except Exception as e:
-        log_queue.put({"type": "log", "content": f"\n❌ Engine Thread Exception: {str(e)}\n"})
-        log_queue.put({"type": "status", "content": "failed"})
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    instances = []
+    for line in result.stdout.splitlines():
+        fields = line.replace("\x00", "").strip().split()
+        if fields and fields[0].upper() != "NAME":
+            instances.append(fields[0])
+
+    return instances
 
 
-def render_brane_scripts():
-    st.title("📜 BraneScript Workflow Studio")
-    st.write("Compose parallelized pipelines, reference edge datasets securely, and execute workflows on the remote cluster mesh.")
+def _save_workflow(filename: str, source: str) -> Path:
+    """Save one validated workflow in the repository workflow directory."""
+    WORKFLOW_DIR.mkdir(parents=True, exist_ok=True)
+    workflow_path = WORKFLOW_DIR / filename
+    workflow_path.write_text(source, encoding="utf-8")
+    return workflow_path
 
-    with st.expander("📖 Workflow Execution Guidelines", expanded=True):
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown("""
-            **What it does:** Composes and schedules complex multi-party BraneScript analytics pipelines that safely execute computations without transferring raw data away from host environments.
-            """)
-        with col_b:
-            st.markdown("""
-            **Who is this for:** Data Scientists and Researchers.
-            **Prerequisites:** Packages must already be compiled and published, and an active login tunnel to the Central Hub session must be initialized.
-            """)
 
-    st.divider()
+def render_brane_scripts() -> None:
+    """Render the single user-facing workflow authoring and execution page."""
+    st.title("Workflow Studio")
+    st.markdown(
+        "Write a BraneScript workflow, save it locally, and run it on this "
+        "workstation or through a configured Brane instance."
+    )
 
-    # -------------------------------------------------------------------
-    # SEED PERSISTENT WORKSPACE STATE VALUES
-    # -------------------------------------------------------------------
-    if "cfg_script_name" not in st.session_state:
-        st.session_state.cfg_script_name = "my_analysis.bs"
-        
-    if "cfg_workflow_code" not in st.session_state:
-        st.session_state.cfg_workflow_code = """// Import compiled package modules
+    with st.expander("Before you run a workflow"):
+        st.markdown(
+            "1. Build the required package in **User Workspace → Packages**.\n"
+            "2. Configure a Brane instance in **User Workspace → Instances** "
+            "for remote execution.\n"
+            "3. Ensure the applicable domain policy has been activated by a "
+            "Policy Manager."
+        )
+
+    if "workflow_editor_filename" not in st.session_state:
+        st.session_state.workflow_editor_filename = "my_analysis.bs"
+
+    if "workflow_editor_code" not in st.session_state:
+        st.session_state.workflow_editor_code = """// Import compiled package modules
 import hello_world;
 
-// Reference target dataset on its native worker node (data never moves)
 let patient_data := new Data { name := "patient_records" };
-
-// Execute logic loops
 let count := 42;
+
 if count > 10 {
     let result := hello_world();
     println(result);
 } else {
     println("Threshold constraint not met.");
-}"""
+}
+"""
 
-    # Main UI layout splitting: Left for Code Editor, Right for Documentation and Snippets
-    col_editor, col_docs = st.columns([3, 2])
+    editor_column, settings_column = st.columns([3, 2])
 
-    with col_editor:
-        st.subheader("📝 Script Canvas")
-        script_name = st.text_input("Workflow Filename:", value=st.session_state.cfg_script_name, placeholder="e.g. medical_pipeline.bs", key="script_name_input")
-        st.session_state.cfg_script_name = script_name
-        
+    with editor_column:
+        st.subheader("Workflow")
+        script_name = st.text_input(
+            "Workflow filename",
+            key="workflow_editor_filename",
+            help="Use a .bs filename. Directory paths are not allowed.",
+        )
         workflow_code = st.text_area(
-            "Write BraneScript code logic here:",
-            value=st.session_state.cfg_workflow_code,
-            height=400,
-            key="workflow_code_input"
+            "BraneScript code",
+            height=420,
+            key="workflow_editor_code",
         )
-        st.session_state.cfg_workflow_code = workflow_code
 
-    with col_docs:
-        st.subheader("💡 Code Quick-Inject Sheets")
-        
-        snippet_type = st.selectbox(
-            "Choose Code Blueprint Template:",
-            ["Dataset Analysis Loop", "While Iterator Pattern", "Conditional Gate Block"],
-            key="snippet_type_select"
+    with settings_column:
+        st.subheader("Execution settings")
+
+        workflow_user = st.text_input(
+            "Workflow label",
+            key="workflow_user_label",
+            placeholder="Your name or project label",
+            help=(
+                "This label identifies the workflow submission. "
+                "It is not an Administrator-provisioned login."
+            ),
         )
-        
-        if snippet_type == "Dataset Analysis Loop":
-            st.code("""let target_set := new Data { name := "records" };\nlet summary := analyze(target_set);\nprintln(summary);""", language="python")
-        elif snippet_type == "While Iterator Pattern":
-            st.code("""let i := 0;\nwhile i < 5 {\n    println(i);\n    i := i + 1;\n}""", language="python")
-        elif snippet_type == "Conditional Gate Block":
-            st.code("""if count > 10 {\n    println("High priority");\n} else {\n    println("Standard process");\n}""", language="python")
-            
-        st.markdown("""
-        #### 📊 Standard Type Cheat Sheet
-        * `String` : `"hello"`
-        * `Integer` : `42`
-        * `Real` : `3.14`
-        * `Boolean` : `true / false`
-        * `Data` : `new Data { name := "x" }`
-        """)
 
-    st.divider()
-    st.subheader("🚀 Compilation & Execution Runtime Platform")
+        execution_mode = st.radio(
+            "Execution target",
+            ["Remote configured instance", "Local workstation"],
+            horizontal=False,
+            key="workflow_execution_mode",
+        )
 
-    col_net1, col_net2, col_net3 = st.columns(3)
-    with col_net1:
-        exec_target = st.radio("Target Routing Space Environment:", ["Remote Instance Mode", "Local Sandboxed Mode"], horizontal=True, key="exec_target_radio")
-    with col_net2:
-        #instance_ip = st.text_input("Central Instance URL:", value="145.100.135.209", key="instance_ip_input")
-         instance_ip = st.text_input("Central Instance URL:", value="", placeholder="e.g. http://145.100.135.209", key="instance_ip_input")
-    with col_net3:
-        instance_port = st.text_input("Engine Port Configuration:", value="50053", key="instance_port_input")
+        selected_instance = None
+        if execution_mode == "Remote configured instance":
+            instances = _get_instances()
 
-    is_script_running = st.session_state.global_script_status == "running"
-
-    if st.button("Launch Workflow Stream Execution", type="primary", disabled=is_script_running):
-        # 1. Save code cleanly down onto disk system 
-        target_file_path = os.path.join(SCRIPT_DIR, script_name)
-        with open(target_file_path, "w") as f:
-            f.write(workflow_code)
-            
-        # Clear logs and reset communication queue channel
-        st.session_state.global_script_logs = [
-            f"💾 Saved script locally to `{target_file_path}`\n"
-        ]
-        st.session_state.script_log_queue = queue.Queue()
-        
-        # 2. Formulate runtime flag options based on environment parameters
-        if exec_target == "Remote Instance Mode":
-            st.session_state.global_script_logs.append(f"Connecting to live Brane mesh framework engine at `http://{instance_ip}:{instance_port}`...\n")
-            cmd = ["brane", "workflow", "run", "--remote", f"http://{instance_ip}:{instance_port}", script_name]
+            if instances:
+                selected_instance = st.selectbox(
+                    "Brane instance",
+                    instances,
+                    key="workflow_instance",
+                )
+                st.caption(
+                    "The selected instance is activated immediately before "
+                    "remote workflow submission."
+                )
+            else:
+                st.warning(
+                    "No configured instances were found. Add one in "
+                    "**User Workspace → Instances** before running remotely."
+                )
         else:
-            st.session_state.global_script_logs.append("Spinning up local secure offline diagnostic sandbox container profile...\n")
-            cmd = ["brane", "workflow", "run", script_name]
-            
-        st.session_state.global_script_logs.append(f"=== Launching Engine Execution Pipe: {' '.join(cmd)} ===\n")
-        
-        # 3. Fire the background pipeline worker
-        st.session_state.global_script_status = "running"
-        t = threading.Thread(
-            target=async_script_worker, 
-            args=(cmd, st.session_state.script_log_queue), 
-            daemon=True
+            st.caption(
+                "The workflow runs using the local Brane command configuration."
+            )
+
+    remote_unavailable = (
+        execution_mode == "Remote configured instance" and not selected_instance
+    )
+
+    if st.button(
+        "Run workflow",
+        type="primary",
+        key="workflow_editor_launch",
+        disabled=remote_unavailable,
+    ):
+        if not SCRIPT_NAME_PATTERN.fullmatch(script_name):
+            st.error(
+                "Use a simple .bs filename containing letters, numbers, "
+                "dots, underscores, or hyphens."
+            )
+            return
+
+        if not workflow_user.strip():
+            st.error("Enter a workflow label before running the workflow.")
+            return
+
+        try:
+            workflow_path = _save_workflow(script_name, workflow_code)
+        except OSError as exc:
+            st.error(f"Could not save the workflow: {exc}")
+            return
+
+        if execution_mode == "Remote configured instance":
+            if not REMOTE_RUNNER.is_file():
+                st.error(
+                    "The remote workflow runner is missing: "
+                    f"`{REMOTE_RUNNER}`"
+                )
+                return
+
+            command = [
+                sys.executable,
+                str(REMOTE_RUNNER),
+                "--instance",
+                selected_instance,
+                "--username",
+                workflow_user.strip(),
+                "--workflow",
+                str(workflow_path),
+            ]
+            operation = "workflow_editor_run_remote"
+            label = f"Remote workflow: {script_name} via {selected_instance}"
+            metadata = {
+                "workflow": script_name,
+                "mode": "remote",
+                "instance": selected_instance,
+                "username": workflow_user.strip(),
+            }
+        else:
+            command = [
+                get_brane_executable(),
+                "workflow",
+                "run",
+                workflow_user.strip(),
+                script_name,
+            ]
+            operation = "workflow_editor_run_local"
+            label = f"Local workflow: {script_name}"
+            metadata = {
+                "workflow": script_name,
+                "mode": "local",
+                "username": workflow_user.strip(),
+            }
+
+        task, error = task_manager.start_task(
+            role="user",
+            operation=operation,
+            label=label,
+            command=command,
+            cwd=WORKFLOW_DIR,
+            metadata=metadata,
+            lock_name="workflow-execution",
         )
-        t.start()
-        st.rerun()
 
-    # -------------------------------------------------------------------
-    # LIVE STREAM LOG CONSUMER VIEW
-    # -------------------------------------------------------------------
-    st.markdown("### 🖥️ Workflow Execution Output Stream")
-    
-    if st.session_state.global_script_status == "idle":
-        st.info("Workflow execution engine idle. Press launch above to trigger pipeline verification.")
-    elif st.session_state.global_script_status == "running":
-        st.warning("⚡ Workflow execution currently processing across microservices infrastructure...")
-    elif st.session_state.global_script_status == "success":
-        st.success("🎉 Workflow Execution Pipeline Completed Successfully!")
-    elif st.session_state.global_script_status == "failed":
-        st.error("❌ Execution terminated due to runtime errors. Check engine context trace log rules below.")
+        if error:
+            st.error(error)
+        else:
+            st.session_state.workflow_editor_task_id = task["id"]
+            st.success("Workflow execution started in the background.")
+            st.rerun()
 
-    terminal_area = st.empty()
-
-    if st.session_state.global_script_status == "running":
-        while st.session_state.global_script_status == "running":
-            # Safely drain updates off the background queue on the main UI thread
-            while not st.session_state.script_log_queue.empty():
-                item = st.session_state.script_log_queue.get()
-                if item["type"] == "status":
-                    st.session_state.global_script_status = item["content"]
-                elif item["type"] == "log":
-                    st.session_state.global_script_logs.append(item["content"])
-            
-            terminal_area.code("".join(st.session_state.global_script_logs), language="bash")
-            time.sleep(0.4)
-        st.rerun()
-    else:
-        logs = "".join(st.session_state.global_script_logs)
-        if logs:
-            terminal_area.code(logs, language="bash")
+    task_id = st.session_state.get("workflow_editor_task_id")
+    if task_id:
+        render_task_monitor(task_id, title="Workflow execution progress")

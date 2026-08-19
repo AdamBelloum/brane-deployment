@@ -3,6 +3,8 @@
 # ──────────────────────────────────────────
 *.env
 !*.env.example
+frontend/runtime/*
+!frontend/runtime/.gitkeep
 
 # Private keys and certificates
 *.pem

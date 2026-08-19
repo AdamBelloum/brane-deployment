@@ -27,10 +27,59 @@ ANSIBLE_INVENTORY="${BRANE_DEPLOY_HOME}/inventories/production/hosts.ini"
 INSTANCE_NAME="${INSTANCE_NAME:-my-brane}"
 
 # ── Parse arguments ───────────────────────────────────────
+# Without --node, the original interactive node-selection flow remains
+# available. The Admin dashboard will use --node for background execution.
+SELECTED_NODE=""
+OUTPUT_NAME=""
+LOCAL_CERTS_ROOT="${REPO_ROOT}/certs"
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --inventory|-i) ANSIBLE_INVENTORY="$2"; shift 2 ;;
-        *) echo "[WARN] Unknown argument: $1"; shift ;;
+        --inventory|-i)
+            [[ $# -ge 2 ]] || { echo "[ERROR] Missing value for $1"; exit 2; }
+            ANSIBLE_INVENTORY="$2"
+            shift 2
+            ;;
+        --node|-n)
+            [[ $# -ge 2 ]] || { echo "[ERROR] Missing value for $1"; exit 2; }
+            SELECTED_NODE="$2"
+            shift 2
+            ;;
+        --output-dir|-o)
+            [[ $# -ge 2 ]] || { echo "[ERROR] Missing value for $1"; exit 2; }
+            LOCAL_CERTS_ROOT="$2"
+            shift 2
+            ;;
+        --output-name)
+            [[ $# -ge 2 ]] || { echo "[ERROR] Missing value for $1"; exit 2; }
+            OUTPUT_NAME="$2"
+            shift 2
+            ;;
+        --help|-h)
+            cat <<'EOF'
+Usage:
+  bash scripts/brane_gen_cert.sh [OPTIONS]
+
+Generate one client-certificate bundle for a Brane node/domain.
+
+Options:
+  -i, --inventory PATH   Ansible inventory to use.
+  -n, --node NAME        Select this inventory node without prompting.
+  -o, --output-dir PATH  Local certificate root directory.
+                          Default: <repository-root>/certs
+      --output-name NAME Directory name below the local certificate root.
+                          Default: the selected inventory node name.
+  -h, --help             Show this help message.
+
+Generation replaces the current client.pem and client-key.pem for
+the selected node/domain.
+EOF
+            exit 0
+            ;;
+        *)
+            echo "[ERROR] Unknown argument: $1"
+            exit 2
+            ;;
     esac
 done
 
@@ -56,26 +105,32 @@ fi
 log_info "Reading inventory: ${ANSIBLE_INVENTORY}"
 
 ANSIBLE_USER=$(ansible all -i "${ANSIBLE_INVENTORY}" \
+    --playbook-dir "${BRANE_DEPLOY_HOME}" \
     -m debug -a "msg={{ ansible_user }}" --one-line 2>/dev/null \
     | sed -n 's/.*"msg": "\([^"]*\)".*/\1/p' | head -1)
 
 CENTRAL_HOST=$(ansible central -i "${ANSIBLE_INVENTORY}" \
+    --playbook-dir "${BRANE_DEPLOY_HOME}" \
     -m debug -a "msg={{ ansible_host }}" --one-line 2>/dev/null \
     | sed -n 's/.*"msg": "\([^"]*\)".*/\1/p' | head -1)
 
 CENTRAL_DIR=$(ansible central -i "${ANSIBLE_INVENTORY}" \
+    --playbook-dir "${BRANE_DEPLOY_HOME}" \
     -m debug -a "msg={{ brane_central_install_dir }}" --one-line 2>/dev/null \
     | sed -n 's/.*"msg": "\([^"]*\)".*/\1/p' | head -1)
 
 W_DIR=$(ansible workers -i "${ANSIBLE_INVENTORY}" \
+    --playbook-dir "${BRANE_DEPLOY_HOME}" \
     -m debug -a "msg={{ brane_worker_install_dir }}" --one-line 2>/dev/null \
     | sed -n 's/.*"msg": "\([^"]*\)".*/\1/p' | head -1)
 
 W_IPS=$(ansible workers -i "${ANSIBLE_INVENTORY}" \
+    --playbook-dir "${BRANE_DEPLOY_HOME}" \
     -m debug -a "msg={{ ansible_host }}" --one-line 2>/dev/null \
     | sed -n 's/.*"msg": "\([^"]*\)".*/\1/p')
 
 W_NAMES=$(ansible workers -i "${ANSIBLE_INVENTORY}" \
+    --playbook-dir "${BRANE_DEPLOY_HOME}" \
     -m debug -a "msg={{ inventory_hostname }}" --one-line 2>/dev/null \
     | sed -n 's/.*"msg": "\([^"]*\)".*/\1/p')
 
@@ -91,7 +146,7 @@ while IFS= read -r line; do
     [ -n "$line" ] && NODE_NAMES+=("$line")
 done <<< "$W_NAMES"
 
-# ── Node selection menu ───────────────────────────────────
+# ── Node selection ────────────────────────────────────────
 echo ""
 echo "  Available nodes:"
 idx=0
@@ -101,15 +156,33 @@ while [ $idx -lt ${#NODE_NAMES[@]} ]; do
 done
 echo ""
 
-while true; do
-    read -r -p "  Select node [1-${#NODE_NAMES[@]}]: " CHOICE
-    [[ "$CHOICE" =~ ^[0-9]+$ ]] && \
-        [ "$CHOICE" -ge 1 ] && [ "$CHOICE" -le "${#NODE_NAMES[@]}" ] && break
-    log_error "Invalid choice."
-done
+if [[ -n "${SELECTED_NODE}" ]]; then
+    CHOICE=""
+    for idx in "${!NODE_NAMES[@]}"; do
+        if [[ "${NODE_NAMES[$idx]}" == "${SELECTED_NODE}" ]]; then
+            CHOICE="$((idx + 1))"
+            break
+        fi
+    done
+
+    if [[ -z "${CHOICE}" ]]; then
+        log_error "Unknown node '${SELECTED_NODE}'. Choose a node listed above."
+        exit 2
+    fi
+
+    log_info "Selected node from command line: ${SELECTED_NODE}"
+else
+    while true; do
+        read -r -p "  Select node [1-${#NODE_NAMES[@]}]: " CHOICE
+        [[ "$CHOICE" =~ ^[0-9]+$ ]] && \
+            [ "$CHOICE" -ge 1 ] && [ "$CHOICE" -le "${#NODE_NAMES[@]}" ] && break
+        log_error "Invalid choice."
+    done
+fi
 
 SEL_NODE="${NODE_NAMES[$((CHOICE-1))]}"
 SEL_HOST="${NODE_HOSTS[$((CHOICE-1))]}"
+
 
 if [ "$SEL_NODE" = "central" ]; then
     REMOTE_CERT_DIR="${CENTRAL_DIR}/config/certs"
@@ -117,7 +190,14 @@ else
     REMOTE_CERT_DIR="${W_DIR}/config/certs"
 fi
 
+CERTIFICATE_DIR_NAME="${OUTPUT_NAME:-${SEL_NODE}}"
+if [[ ! "${CERTIFICATE_DIR_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    log_error "Invalid certificate output name: ${CERTIFICATE_DIR_NAME}"
+    exit 2
+fi
+
 log_info "Node: $SEL_NODE ($SEL_HOST) — $REMOTE_CERT_DIR"
+log_info "Local certificate directory name: ${CERTIFICATE_DIR_NAME}"
 
 # ── Verify CA files on remote ─────────────────────────────
 CA_CHECK=$(ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=5 \
@@ -131,6 +211,7 @@ fi
 
 # ── Generate client cert on remote (with required extensions) ────
 log_info "Generating client certificate on ${SEL_NODE}..."
+log_info "This replaces the current client certificate bundle for ${SEL_NODE}."
 ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=10 \
     "${ANSIBLE_USER}@${SEL_HOST}" bash <<REMOTE
 set -e
@@ -166,8 +247,9 @@ if [ $? -ne 0 ]; then
 fi
 
 # ── Save locally under certs/<node>/ ─────────────────────
-LOCAL_DIR="${BRANE_DEPLOY_HOME}/certs/${SEL_NODE}"
-[ -d "$LOCAL_DIR" ] || mkdir -p "$LOCAL_DIR"
+# The Streamlit frontend reads certificate bundles from repository-root certs/.
+LOCAL_DIR="${LOCAL_CERTS_ROOT}/${CERTIFICATE_DIR_NAME}"
+mkdir -p "$LOCAL_DIR"
 
 scp -o StrictHostKeyChecking=no -o LogLevel=ERROR \
     "${ANSIBLE_USER}@${SEL_HOST}:${REMOTE_CERT_DIR}/ca.pem" \

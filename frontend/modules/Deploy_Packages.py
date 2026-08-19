@@ -1,228 +1,185 @@
-import os
-import subprocess
-import zipfile
-import shutil
+import re
+import sys
+import tempfile
+from pathlib import Path
+
 import streamlit as st
 
-from modules.config import INVENTORY_PATH, get_brane_executable, get_central_ip
+from modules import task_manager
+from modules.config import REPO_ROOT, get_brane_executable, get_central_ip
+from modules.task_ui import render_task_monitor
 
 
-def render_packages_deploy():
+PACKAGE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
+
+def _create_workspace(prefix: str) -> Path:
+    staging_root = Path(REPO_ROOT) / ".task-staging"
+    staging_root.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=staging_root))
+
+
+def _start_task(
+    *,
+    operation: str,
+    label: str,
+    command: list[str],
+    metadata: dict,
+) -> None:
+    task, error = task_manager.start_task(
+        role="user",
+        operation=operation,
+        label=label,
+        command=command,
+        cwd=REPO_ROOT,
+        metadata=metadata,
+        lock_name="package-deployment",
+    )
+    if error:
+        st.error(error)
+        return
+
+    st.session_state.package_deploy_task_id = task["id"]
+    st.success("Package deployment started in the background.")
+    st.rerun()
+
+
+def render_packages_deploy() -> None:
     st.title("Brane Package Deployment & Integration Testing")
     st.markdown(
-        "Use this panel to verify your cluster functionality by compiling, "
-        "registering, and running a test execution payload."
+        "Compile, register, and run package workflows through persistent tasks."
     )
 
     central_ip = get_central_ip()
-    if not central_ip:
-        st.warning(
-            "No central hub IP detected. "
-            "Configure your inventory in the **Cluster Configurator** first."
-        )
-    else:
+    if central_ip:
         st.info(f"Connected to central hub: `{central_ip}`")
-
-    st.divider()
-    st.subheader("Deploy Operational Packages")
-
-    tab1, tab2 = st.tabs(["Upload Custom Package", "Run Smoke Test"])
-
-    # =========================================================================
-    # TAB 1: CUSTOM USER PACKAGE UPLOADER
-    # =========================================================================
-    with tab1:
-        st.markdown(
-            "Compile and register your custom Brane application container."
+    else:
+        st.warning(
+            "No central hub IP detected. Configure the inventory in "
+            "**Cluster Configurator** first."
         )
 
-        col_u1, col_u2 = st.columns(2)
-        with col_u1:
+    tab_custom, tab_smoke = st.tabs(
+        ["Upload Custom Package", "Run Smoke Test"]
+    )
+
+    with tab_custom:
+        st.subheader("Upload Custom Package")
+        st.caption(
+            "The manifest and ZIP are staged locally, then built and pushed "
+            "by a background task."
+        )
+
+        col_manifest, col_source = st.columns(2)
+        with col_manifest:
             uploaded_manifest = st.file_uploader(
-                "Package Manifest (`container.yml`):", type=["yml", "yaml"]
+                "Package Manifest (`container.yml`)",
+                type=["yml", "yaml"],
             )
-        with col_u2:
+        with col_source:
             uploaded_source = st.file_uploader(
-                "Source Files Bundle (`.zip`):", type=["zip"]
+                "Source Files Bundle (`.zip`)",
+                type=["zip"],
             )
 
-        custom_package_name = st.text_input(
-            "Package Name:", placeholder="e.g. image_processor"
+        package_name = st.text_input(
+            "Package Name",
+            placeholder="e.g. image_processor",
         )
 
         if st.button(
             "Build and Push Package",
             type="primary",
-            disabled=(central_ip is None),
+            disabled=central_ip is None,
         ):
-            if not uploaded_manifest or not uploaded_source or not custom_package_name:
+            if not uploaded_manifest or not uploaded_source or not package_name:
+                st.error("Supply a manifest, source ZIP, and package name.")
+            elif not PACKAGE_NAME_PATTERN.fullmatch(package_name):
                 st.error(
-                    "Please supply a manifest file, source zip, and package name."
+                    "Package name must be 1–64 characters using letters, "
+                    "numbers, dots, underscores, or hyphens."
                 )
             else:
-                brane_cli = get_brane_executable()
-                with st.status("Building and registering package...", expanded=True) as status:
-                    user_dir = f"/tmp/brane-user-package-{custom_package_name}"
-                    if os.path.exists(user_dir):
-                        shutil.rmtree(user_dir)
-                    os.makedirs(user_dir, exist_ok=True)
-
-                    st.write("Staging source files...")
-                    with open(os.path.join(user_dir, "container.yml"), "wb") as f:
-                        f.write(uploaded_manifest.getbuffer())
-
-                    zip_path = os.path.join(user_dir, "source.zip")
-                    with open(zip_path, "wb") as f:
-                        f.write(uploaded_source.getbuffer())
-                    with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                        zip_ref.extractall(user_dir)
-                    for root, dirs, files in os.walk(user_dir):
-                        for file in files:
-                            os.chmod(os.path.join(root, file), 0o755)
-
-                    st.write("Building package...")
-                    build_res = subprocess.run(
-                        [brane_cli, "package", "build", "./container.yml"],
-                        cwd=user_dir,
-                        capture_output=True,
-                        text=True,
+                workspace = _create_workspace("custom-package-")
+                try:
+                    (workspace / "container.yml").write_bytes(
+                        uploaded_manifest.getvalue()
                     )
-                    if build_res.returncode != 0:
-                        st.error(f"Build failed:\n{build_res.stderr}")
-                        status.update(label="Build failed", state="error")
-                        st.stop()
-
-                    st.write(f"Pushing `{custom_package_name}` to registry...")
-                    subprocess.run(
-                        [brane_cli, "login", f"http://{central_ip}", "--username", "dashboard_user"],
-                        capture_output=True,
-                        text=True,
+                    (workspace / "source.zip").write_bytes(
+                        uploaded_source.getvalue()
                     )
-                    push_res = subprocess.run(
-                        [brane_cli, "package", "push", custom_package_name],
-                        cwd=user_dir,
-                        capture_output=True,
-                        text=True,
+                except OSError as exc:
+                    st.error(f"Could not stage uploaded files: {exc}")
+                else:
+                    brane_cli = get_brane_executable()
+                    _start_task(
+                        operation="package_build_push",
+                        label=f"Build and push package: {package_name}",
+                        command=[
+                            sys.executable,
+                            str(Path(__file__).with_name("package_deploy_task.py")),
+                            "custom",
+                            "--workspace",
+                            str(workspace),
+                            "--brane-cli",
+                            brane_cli,
+                            "--central-ip",
+                            central_ip,
+                            "--package-name",
+                            package_name,
+                        ],
+                        metadata={
+                            "package_name": package_name,
+                            "central_ip": central_ip,
+                            "source": "uploaded",
+                        },
                     )
-                    if push_res.returncode == 0:
-                        status.update(
-                            label=f"Package `{custom_package_name}` registered successfully!",
-                            state="complete",
-                        )
-                        st.success(
-                            f"Package is live. Import it in workflows with: "
-                            f"`import {custom_package_name};`"
-                        )
-                    else:
-                        status.update(label="Registry push failed", state="error")
-                        st.error(f"Registry error:\n{push_res.stderr}")
 
-    # =========================================================================
-    # TAB 2: SMOKE TEST
-    # =========================================================================
-    with tab2:
-        st.markdown("Run the baseline hello-world smoke test against the cluster.")
+    with tab_smoke:
+        st.subheader("Run Smoke Test")
+        st.caption(
+            "Builds, pushes, and executes the baseline hello-world workflow."
+        )
 
         test_mode = st.selectbox(
-            "Runtime:",
+            "Runtime",
             ["Python-based Package (Recommended)", "Bash Shell-based Package"],
         )
 
         if st.button(
             "Run Hello World Smoke Test",
             type="primary",
-            disabled=(central_ip is None),
+            disabled=central_ip is None,
         ):
+            mode = "python" if "Python" in test_mode else "bash"
+            workspace = _create_workspace("hello-world-smoke-")
             brane_cli = get_brane_executable()
-            with st.status("Running smoke test...", expanded=True) as status:
-                test_dir = "/tmp/hello-world-test"
-                if os.path.exists(test_dir):
-                    shutil.rmtree(test_dir)
-                os.makedirs(test_dir, exist_ok=True)
 
-                container_yml_path = os.path.join(test_dir, "container.yml")
+            _start_task(
+                operation="package_smoke_test",
+                label=f"Run {mode} hello-world smoke test",
+                command=[
+                    sys.executable,
+                    str(Path(__file__).with_name("package_deploy_task.py")),
+                    "smoke",
+                    "--workspace",
+                    str(workspace),
+                    "--brane-cli",
+                    brane_cli,
+                    "--central-ip",
+                    central_ip,
+                    "--mode",
+                    mode,
+                ],
+                metadata={
+                    "central_ip": central_ip,
+                    "runtime": mode,
+                },
+            )
 
-                if "Python" in test_mode:
-                    st.write("Preparing Python package...")
-                    script_path = os.path.join(test_dir, "analyze.py")
-                    with open(script_path, "w") as f:
-                        f.write(
-                            '#!/usr/bin/env python3\nimport yaml\n'
-                            'print(yaml.dump({"output": "Hello from Python!"}, '
-                            'default_flow_style=True).strip())\n'
-                        )
-                    os.chmod(script_path, 0o755)
-                    with open(container_yml_path, "w") as f:
-                        f.write(
-                            "name: python_hello\nversion: 1.0.0\nkind: ecu\n"
-                            "dependencies:\n - python3\n - python3-yaml\n"
-                            "files:\n - analyze.py\nentrypoint:\n kind: task\n exec: analyze.py\n"
-                            "actions:\n 'hello':\n  command:\n  input:\n  output:\n"
-                            "   - name: output\n     type: string\n"
-                        )
-                    package_name = "python_hello"
-                    workflow = "import python_hello;\nprint(python_hello.hello());\n"
-                else:
-                    st.write("Preparing Bash package...")
-                    script_path = os.path.join(test_dir, "hello_world.sh")
-                    with open(script_path, "w") as f:
-                        f.write('#!/bin/bash\necho \'output: "Hello from Bash!"\'\n')
-                    os.chmod(script_path, 0o755)
-                    with open(container_yml_path, "w") as f:
-                        f.write(
-                            "name: bash_hello\nversion: 1.0.0\nkind: ecu\n"
-                            "files:\n - hello_world.sh\nentrypoint:\n kind: task\n exec: hello_world.sh\n"
-                            "actions:\n 'hello_world':\n  command:\n  input:\n  output:\n"
-                            "   - name: output\n     type: string\n"
-                        )
-                    package_name = "bash_hello"
-                    workflow = "import bash_hello;\nprint(bash_hello.hello_world());\n"
-
-                st.write("Building package...")
-                build_res = subprocess.run(
-                    [brane_cli, "package", "build", "./container.yml"],
-                    cwd=test_dir,
-                    capture_output=True,
-                    text=True,
-                )
-                if build_res.returncode != 0:
-                    st.error(f"Build failed:\n{build_res.stderr}")
-                    status.update(label="Build failed", state="error")
-                    st.stop()
-
-                st.write("Pushing to registry...")
-                subprocess.run(
-                    [brane_cli, "login", f"http://{central_ip}", "--username", "smoke_tester"],
-                    capture_output=True,
-                    text=True,
-                )
-                subprocess.run(
-                    [brane_cli, "package", "push", package_name],
-                    cwd=test_dir,
-                    capture_output=True,
-                    text=True,
-                )
-
-                workflow_file = os.path.join(test_dir, "workflow.bs")
-                with open(workflow_file, "w") as f:
-                    f.write(workflow)
-
-                st.write("Running workflow...")
-                run_res = subprocess.run(
-                    [
-                        brane_cli, "workflow", "run", "workflow.bs",
-                        "--remote", f"http://{central_ip}:50053",
-                    ],
-                    cwd=test_dir,
-                    capture_output=True,
-                    text=True,
-                )
-
-                if run_res.returncode == 0:
-                    status.update(label="Smoke test passed!", state="complete")
-                    st.subheader("Output")
-                    st.code(run_res.stdout, language="yaml")
-                else:
-                    status.update(label="Smoke test failed", state="error")
-                    st.error(f"Workflow error:\n{run_res.stderr}")
-
+    task_id = st.session_state.get("package_deploy_task_id")
+    if task_id:
+        render_task_monitor(
+            task_id,
+            title="Package deployment and smoke-test progress",
+        )

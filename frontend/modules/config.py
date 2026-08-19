@@ -24,6 +24,16 @@ _MODULES_DIR = os.path.dirname(os.path.abspath(__file__))
 _FRONTEND_DIR = os.path.dirname(_MODULES_DIR)
 REPO_ROOT = os.path.dirname(_FRONTEND_DIR)
 
+# Local, Git-ignored Streamlit task state and logs.
+FRONTEND_RUNTIME_DIR = Path(_FRONTEND_DIR) / "runtime"
+
+# Repository-root resources, shared by the role workspaces.
+PACKAGES_DIR = Path(REPO_ROOT) / "packages"
+CERTS_DIR = Path(REPO_ROOT) / "certs"
+DATASETS_DIR = Path(REPO_ROOT) / "datasets"
+POLICIES_DIR = Path(REPO_ROOT) / "policies"
+POLICY_TOKENS_DIR = Path(REPO_ROOT) / "policy_tokens"
+
 # ── Ansible / docker-deployment paths ────────────────────────────────────────
 ANSIBLE_DIR = os.environ.get(
     "BRANE_ANSIBLE_DIR",
@@ -110,3 +120,52 @@ def get_brane_executable() -> str:
     # 5. Bare fallback — subprocess will raise FileNotFoundError with a clear message
     return "brane"
 
+
+
+# ── Repository resource discovery ────────────────────────────────────────────
+
+def list_packages() -> list[str]:
+    """Return package-directory names directly below the repository packages/ directory."""
+    if not PACKAGES_DIR.is_dir():
+        return []
+    return sorted(
+        entry.name
+        for entry in PACKAGES_DIR.iterdir()
+        if entry.is_dir() and not entry.name.startswith(".")
+    )
+
+
+def _list_resource_files(directory: Path) -> list[str]:
+    """Return non-hidden files below a repository resource directory."""
+    if not directory.is_dir():
+        return []
+
+    return sorted(
+        str(path.relative_to(directory))
+        for path in directory.rglob("*")
+        if path.is_file() and not any(part.startswith(".") for part in path.relative_to(directory).parts)
+    )
+
+
+def list_certs() -> list[str]:
+    """Return certificate-file paths relative to certs/."""
+    return _list_resource_files(CERTS_DIR)
+
+
+def list_datasets() -> list[str]:
+    """Return dataset-file paths relative to datasets/."""
+    return _list_resource_files(DATASETS_DIR)
+
+
+def list_policies() -> list[str]:
+    """Return non-hidden eFLINT policy-file paths relative to policies/."""
+    return [
+        relative_path
+        for relative_path in _list_resource_files(POLICIES_DIR)
+        if relative_path.endswith(".eflint")
+    ]
+
+
+def list_policy_tokens() -> list[str]:
+    """Return non-hidden policy-token file paths relative to policy_tokens/."""
+    return _list_resource_files(POLICY_TOKENS_DIR)
