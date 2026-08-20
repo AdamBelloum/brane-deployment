@@ -101,6 +101,16 @@
     - policy_expert_secret.json
   changed_when: true
 
+- name: "Worker | Build checker policy-store verification keystore"
+  become: false
+  ansible.builtin.script: >
+    build_policy_store_keystore.py
+    --store-secret {{ brane_worker_install_dir }}/config/secrets/policy_store_secret.json
+    --expert-secret {{ brane_worker_install_dir }}/config/secrets/policy_expert_secret.json
+    --output {{ brane_worker_install_dir }}/config/secrets/policy_store_keys.json
+  no_log: true
+  changed_when: true
+
 - name: "Worker | Generate policy database"
   become: false
   ansible.builtin.command: >
