@@ -53,4 +53,6 @@ brane_drv_port: 50053
 brane_prx_name: "brane-prx"
 brane_api_name: "brane-api"
 brane_api_port: 50051
+brane_reg_port: 50051
+brane_job_port: 50052
 brane_plr_name: "brane-plr"

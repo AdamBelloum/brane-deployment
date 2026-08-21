@@ -279,8 +279,8 @@
       BRANE_CENTRAL_IP={{ hostvars[groups['central'][0]]['ansible_host'] }}
       WORKER_A_IP={{ hostvars[groups['workers'][0]]['ansible_host'] }}
       WORKER_B_IP={{ hostvars[groups['workers'][1]]['ansible_host'] }}
-      REG_PORT=50051
-      JOB_PORT=50052
+      REG_PORT={{ brane_reg_port }}
+      JOB_PORT={{ brane_job_port }}
 
 # ── Docker images ──────────────────────────────────────────────────────────────
 
