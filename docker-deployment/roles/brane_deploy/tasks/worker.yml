@@ -56,7 +56,8 @@
 - name: "Worker | Download worker release tarball"
   become: false
   ansible.builtin.get_url:
-    url: "{{ _brane_release_base }}/{{ brane_worker_tarball }}"
+    url: "{{ brane_release.assets[brane_worker_tarball].url }}"
+    checksum: "sha256:{{ brane_worker_tarball_sha256 }}"
     dest: "/tmp/{{ brane_worker_tarball }}"
     mode: "0644"
 
@@ -183,10 +184,10 @@
 
 # ── Compose file ───────────────────────────────────────────────────────────────
 
-- name: "Worker | Download docker-compose.yml from Git repo"
+- name: "Worker | Copy docker-compose.yml from the deployment checkout"
   become: false
-  ansible.builtin.get_url:
-    url: "{{ brane_worker_compose_url }}"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../scripts/templates/worker-compose.yml"
     dest: "{{ brane_worker_install_dir }}/docker-compose.yml"
     mode: "0644"
     owner: "{{ ansible_user }}"

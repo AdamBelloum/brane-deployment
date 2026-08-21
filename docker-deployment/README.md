@@ -72,11 +72,12 @@ Key variables to review before running:
 
 | Variable           | Default                  | Description                              |
 |--------------------|--------------------------|------------------------------------------|
-| `brane_user_home`  | `/home/ubuntu`           | Home directory of the remote deploy user |
-| `ansible_user`     | set in `ansible.cfg`     | SSH user for all VMs                     |
-| `branectl_url`     | test release URL         | Download URL for `branectl` binary       |
-| `brane_cli_url`    | test release URL         | Download URL for `brane` CLI binary      |
-| `brane_image_tag`  | `3.0.0-nightly_fdbbd6c2` | Brane container image tag                |
+| `brane_user_home` | `/home/adam` | Home directory of the remote deploy user |
+| `ansible_user` | set in inventory | SSH user for all VMs |
+| `brane_release` | `test` | Release manifest containing URLs and verified SHA-256 digests |
+| `brane_cli_artifacts` | `linux-x86_64` | Checksum-pinned `brane` CLI artefact |
+| `branectl_artifacts` | `linux-x86_64` | Checksum-pinned `branectl` artefact |
+| `brane_image_tag` | `test` | Local tag applied to images loaded from the locked archives |
 
 > **Note:** `brane_user_home` must match the actual home directory of the SSH user on the target VMs (e.g. `/home/ubuntu` for Ubuntu cloud images).
 

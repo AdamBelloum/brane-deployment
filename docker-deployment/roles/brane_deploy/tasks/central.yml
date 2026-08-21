@@ -79,7 +79,8 @@
 # ── Tarball ────────────────────────────────────────────────────────────────────
 - name: "Central | Download central release tarball"
   ansible.builtin.get_url:
-    url: "{{ _brane_release_base }}/{{ brane_central_tarball }}"
+    url: "{{ brane_release.assets[brane_central_tarball].url }}"
+    checksum: "sha256:{{ brane_central_tarball_sha256 }}"
     dest: "/tmp/{{ brane_central_tarball }}"
     mode: "0644"
   become: false
@@ -95,9 +96,9 @@
   tags: [central]
 
 # ── Compose file ───────────────────────────────────────────────────────────────
-- name: "Central | Download central-compose.yml from Git repo"
-  ansible.builtin.get_url:
-    url: "{{ brane_central_compose_url }}"
+- name: "Central | Copy central-compose.yml from the deployment checkout"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../scripts/templates/central-compose.yml"
     dest: "{{ brane_central_install_dir }}/docker-compose.yml"
     mode: "0644"
     owner: "{{ ansible_user }}"

@@ -13,11 +13,53 @@
 brane_user_home: "/home/adam"
 
 #############################
-# ── Brane image version ─────
+# ── Brane release lock ──────
 #############################
 
-brane_image_tag: "3.0.0-nightly_fdbbd6c2"
-brane_image_version: "3.0.0-nightly_fdbbd6c2"
+# One verified Brane release baseline for every externally downloaded artefact.
+# GitHub's mutable `test` tag is constrained by the SHA-256 values below.
+brane_release:
+  tag: "test"
+  published_at: "2026-03-06T15:01:19Z"
+  target_commitish: "main"
+  assets:
+    brane-linux-x86_64:
+      url: "https://github.com/BraneFramework/brane/releases/download/test/brane-linux-x86_64"
+      sha256: "761597c68bfbdccb745b0e466c9011ff82fbdb4dbf886567dea178cd5f4116c1"
+    branectl-linux-x86_64:
+      url: "https://github.com/BraneFramework/brane/releases/download/test/branectl-linux-x86_64"
+      sha256: "c1f3c7804d258b3afcbf0956ab5bf17a2a66a9dfa280d844fc0418d1373cbe2b"
+    branelet-linux-x86_64:
+      url: "https://github.com/BraneFramework/brane/releases/download/test/branelet-linux-x86_64"
+      sha256: "e57d96f419ee702188f8a3b9aeffc4a02300474e5579202267f27516c128c8d3"
+    central-instance-x86_64.tar.gz:
+      url: "https://github.com/BraneFramework/brane/releases/download/test/central-instance-x86_64.tar.gz"
+      sha256: "6e48ddc466f317fc0979abf9b4c4fc0c1a4f6f3b79f2aea1b476ca03aaf1571a"
+    worker-instance-x86_64.tar.gz:
+      url: "https://github.com/BraneFramework/brane/releases/download/test/worker-instance-x86_64.tar.gz"
+      sha256: "0f02cfc20007b8d4774020d3cfe6e1b7c526b492a1144801bfb877fbbf9b0027"
+
+# Images are loaded from the locked archives and tagged locally for Compose.
+brane_image_tag: "test"
+brane_image_version: "test"
+
+brane_central_tarball: "central-instance-x86_64.tar.gz"
+brane_central_tarball_sha256: "{{ brane_release.assets[brane_central_tarball].sha256 }}"
+brane_worker_tarball: "worker-instance-x86_64.tar.gz"
+brane_worker_tarball_sha256: "{{ brane_release.assets[brane_worker_tarball].sha256 }}"
+
+brane_cli_artifacts:
+  linux-x86_64:
+    url: "{{ brane_release.assets['brane-linux-x86_64'].url }}"
+    sha256: "{{ brane_release.assets['brane-linux-x86_64'].sha256 }}"
+
+branectl_artifacts:
+  linux-x86_64:
+    url: "{{ brane_release.assets['branectl-linux-x86_64'].url }}"
+    sha256: "{{ brane_release.assets['branectl-linux-x86_64'].sha256 }}"
+
+branelet_url: "{{ brane_release.assets['branelet-linux-x86_64'].url }}"
+branelet_sha256: "{{ brane_release.assets['branelet-linux-x86_64'].sha256 }}"
 
 brane_worker_hostname: "{{ ansible_host }}"
 
@@ -26,42 +68,6 @@ brane_worker_hostname: "{{ ansible_host }}"
 #############################
 
 smoke_test_dest: "{{ brane_central_install_dir }}/target/release/smoke-test"
-smoke_test_base_url: "https://raw.githubusercontent.com/AdamBelloum/brane-deployment/main/scripts/smoke-test"
-
-#############################
-# ── Compose file URLs ───────
-#############################
-
-# Docker Compose template for worker nodes
-brane_worker_compose_url: >-
-  https://raw.githubusercontent.com/AdamBelloum/brane-deployment/refs/heads/main/scripts/templates/worker-compose.yml
-
-# Docker Compose template for the central hub
-brane_central_compose_url: >-
-  https://raw.githubusercontent.com/AdamBelloum/brane-deployment/refs/heads/main/scripts/templates/central-compose.yml
-
-#############################
-# ── Base release URL ────────
-#############################
-
-_brane_release_base: "https://github.com/BraneFramework/brane/releases/download/nightly"
-
-#############################
-# ── Binary download URLs ────
-#############################
-
-# Active: test release (pinned for stability during development)
-# Switch to the nightly or arch-specific URLs below when ready.
-branectl_url: "https://github.com/BraneFramework/brane/releases/download/test/branectl-linux-x86_64"
-brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/test/brane-linux-x86_64"
-
-# Nightly (uncomment to use):
-# branectl_url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-linux-x86_64"
-# brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/nightly/brane-linux-x86_64"
-
-# Architecture-aware (uncomment to use):
-# branectl_url: "https://github.com/BraneFramework/brane/releases/download/nightly/branectl-{{ ansible_system | lower }}-{{ ansible_architecture }}"
-# brane_cli_url: "https://github.com/BraneFramework/brane/releases/download/nightly/brane-{{ ansible_system | lower }}-{{ ansible_architecture }}"
 
 #############################
 # ── Local binary paths ──────

@@ -23,6 +23,10 @@
   ansible.builtin.command:
     cmd: bash smoke-test/run-smoke-test.sh
     chdir: "{{ brane_central_install_dir }}/target/release/"
+  environment:
+    BRANE_RELEASE_TAG: "{{ brane_release.tag }}"
+    BRANELET_URL: "{{ branelet_url }}"
+    BRANELET_SHA256: "{{ branelet_sha256 }}"
   register: _smoke_result
   changed_when: false
   tags: [smoke]

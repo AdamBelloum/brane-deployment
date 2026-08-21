@@ -5,13 +5,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$SCRIPT_DIR/smoke-test-package"
 
-# By default we test against the currently selected local Brane instance.
-# `INSTANCE_NAME` can override that when we want to target a specific cluster.
-INSTANCE_NAME="${INSTANCE_NAME:-}"
-BRANE_VERSION="${BRANE_VERSION:-3.0.0}"
+# The Ansible smoke task supplies these from the checksum-locked release manifest.
+BRANE_RELEASE_TAG="${BRANE_RELEASE_TAG:?Missing BRANE_RELEASE_TAG}"
+BRANELET_URL="${BRANELET_URL:?Missing BRANELET_URL}"
+BRANELET_SHA256="${BRANELET_SHA256:?Missing BRANELET_SHA256}"
+BRANELET_PATH="${BRANELET_PATH:-/tmp/branelet-x86_64-${BRANE_RELEASE_TAG}}"
 
-# `brane build` needs a local branelet binary that matches the target arch.
-BRANELET_PATH="${BRANELET_PATH:-/tmp/branelet-x86_64-v${BRANE_VERSION}}"
+# `INSTANCE_NAME` can override the currently selected local Brane instance.
+INSTANCE_NAME="${INSTANCE_NAME:-}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -40,16 +41,39 @@ ensure_builder() {
   docker buildx inspect --bootstrap >/dev/null
 }
 
-download_branelet() {
-  # Cache the helper binary locally so repeated smoke tests do not need to
-  # download it again.
-  if [ -x "$BRANELET_PATH" ]; then
-    return 0
+verify_branelet_sha256() {
+  local actual
+  actual="$(sha256sum "$1" | awk '{print $1}')"
+  if [ "$actual" != "$BRANELET_SHA256" ]; then
+    echo "Checksum mismatch for $1" >&2
+    echo "Expected: $BRANELET_SHA256" >&2
+    echo "Actual:   $actual" >&2
+    return 1
   fi
-  #TODO: this is the version used in the orginal test, I have modified to becayse I use the Test version branectl brane cli
-  #curl -fsSL "https://github.com/BraneFramework/brane/releases/download/v${BRANE_VERSION}/branelet-x86_64" -o "$BRANELET_PATH"
-  curl -fsSL "https://github.com/BraneFramework/brane/releases/download/test/branelet-linux-x86_64" -o "$BRANELET_PATH"
-  chmod +x "$BRANELET_PATH"
+}
+
+download_branelet() {
+  # Verify cached content too: a previous release or a corrupt binary must not
+  # silently be reused merely because it is executable.
+  if [ -x "$BRANELET_PATH" ]; then
+    if verify_branelet_sha256 "$BRANELET_PATH"; then
+      return 0
+    fi
+    echo "Removing stale or invalid cached branelet: $BRANELET_PATH" >&2
+    rm -f "$BRANELET_PATH"
+  fi
+
+  local temporary_path="${BRANELET_PATH}.tmp.$$"
+  rm -f "$temporary_path"
+  curl -fsSL "$BRANELET_URL" -o "$temporary_path"
+
+  if ! verify_branelet_sha256 "$temporary_path"; then
+    rm -f "$temporary_path"
+    exit 1
+  fi
+
+  chmod +x "$temporary_path"
+  mv "$temporary_path" "$BRANELET_PATH"
 }
 
 run_workflow() {
@@ -62,6 +86,7 @@ need_cmd brane
 need_cmd curl
 need_cmd docker
 need_cmd sed
+need_cmd sha256sum
 
 # Prepare the local build toolchain used for the test package.
 ensure_builder
