@@ -79,7 +79,8 @@
 # ── Tarball ────────────────────────────────────────────────────────────────────
 - name: "Central | Download central release tarball"
   ansible.builtin.get_url:
-    url: "{{ _brane_release_base }}/{{ brane_central_tarball }}"
+    url: "{{ brane_release.assets[brane_central_tarball].url }}"
+    checksum: "sha256:{{ brane_central_tarball_sha256 }}"
     dest: "/tmp/{{ brane_central_tarball }}"
     mode: "0644"
   become: false
@@ -95,9 +96,9 @@
   tags: [central]
 
 # ── Compose file ───────────────────────────────────────────────────────────────
-- name: "Central | Download central-compose.yml from Git repo"
-  ansible.builtin.get_url:
-    url: "{{ brane_central_compose_url }}"
+- name: "Central | Copy central-compose.yml from the deployment checkout"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../scripts/templates/central-compose.yml"
     dest: "{{ brane_central_install_dir }}/docker-compose.yml"
     mode: "0644"
     owner: "{{ ansible_user }}"
@@ -214,18 +215,19 @@
         - "{{ smoke_test_dest }}"
         - "{{ smoke_test_dest }}/smoke-test-package"
 
-    - name: Download run-smoke-test.sh
-      ansible.builtin.get_url:
-        url: "{{ smoke_test_base_url }}/run-smoke-test.sh"
+    - name: Copy run-smoke-test.sh from the deployment checkout
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/smoke-test/run-smoke-test.sh"
         dest: "{{ smoke_test_dest }}/run-smoke-test.sh"
         mode: '0755'
 
-    - name: Download smoke-test-package files
-      ansible.builtin.get_url:
-        url: "{{ smoke_test_base_url }}/smoke-test-package/{{ item }}"
+    - name: Copy smoke-test-package files from the deployment checkout
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/smoke-test/smoke-test-package/{{ item }}"
         dest: "{{ smoke_test_dest }}/smoke-test-package/{{ item }}"
         mode: '0644'
       loop:
+        - container.yml
+        - smoke_test.sh
         - worker-a.bs
         - worker-b.bs
-        # add any other files in smoke-test-package/ here

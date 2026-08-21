@@ -3,11 +3,13 @@
 # Defaults — all overridable via group_vars/all.yml or host_vars.
 
 ############################
-# Brane version
+# Brane release baseline
 ############################
 
-brane_image_tag: "3.0.0-nightly_fdbbd6c2"
-brane_image_version: "nightly"
+# The deployment-level checksum-locked release manifest is defined in
+# docker-deployment/group_vars/all.yml.
+brane_image_tag: "test"
+brane_image_version: "test"
 
 ############################
 # Tarball names
@@ -44,11 +46,6 @@ cert_artifact_dir: "artifacts/certs"
 brane_central_internal_hostname: "brane-central.internal"
 
 ############################
-# Compose file URLs
-# Override these in group_vars/all.yml with the correct raw Git URLs
-############################
-
-############################
 # Central service names & ports
 ############################
 brane_drv_name: "brane-drv"
@@ -56,9 +53,6 @@ brane_drv_port: 50053
 brane_prx_name: "brane-prx"
 brane_api_name: "brane-api"
 brane_api_port: 50051
+brane_reg_port: 50051
+brane_job_port: 50052
 brane_plr_name: "brane-plr"
-
-# Base GitHub release URL - Brane
-#brane_release_base: "https://github.com/BraneFramework/brane/releases/download/{{ brane_image_version }}"
-#brane_release_base: "https://github.com/BraneFramework/brane/nightly/download/{{ brane_image_version }}"
- 

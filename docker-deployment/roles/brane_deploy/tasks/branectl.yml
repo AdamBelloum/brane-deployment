@@ -1,17 +1,58 @@
 ---
-# roles/brane/tasks/branectl.yml
-# Download and install the branectl binary (per-user, no sudo).
+# Install the checksum-pinned branectl binary for the Ansible target host.
 
-# something 1
-- name: "branectl | Download binary"
+- name: "branectl | Normalise operating-system name"
+  ansible.builtin.set_fact:
+    branectl_os: >-
+      {{
+        {
+          'Darwin': 'darwin',
+          'Linux': 'linux'
+        }.get(ansible_system, ansible_system | lower)
+      }}
+
+- name: "branectl | Normalise architecture name"
+  ansible.builtin.set_fact:
+    branectl_arch: >-
+      {{
+        {
+          'x86_64': 'x86_64',
+          'amd64': 'x86_64',
+          'arm64': 'aarch64',
+          'aarch64': 'aarch64'
+        }.get(ansible_architecture | lower, ansible_architecture | lower)
+      }}
+
+- name: "branectl | Select platform key"
+  ansible.builtin.set_fact:
+    branectl_platform: "{{ branectl_os }}-{{ branectl_arch }}"
+
+- name: "branectl | Reject unsupported platform"
+  ansible.builtin.assert:
+    that:
+      - branectl_platform in branectl_artifacts
+      - branectl_artifacts[branectl_platform].url | length > 0
+      - branectl_artifacts[branectl_platform].sha256 | length == 64
+    fail_msg: >-
+      No pinned branectl artefact is configured for
+      {{ ansible_system }} / {{ ansible_architecture }}
+      (normalised as {{ branectl_platform }}).
+
+- name: "branectl | Create user binary directory"
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/bin"
+    state: directory
+    mode: "0755"
+
+- name: "branectl | Download checksum-pinned binary"
   ansible.builtin.get_url:
-    url: "{{ branectl_url }}"
+    url: "{{ branectl_artifacts[branectl_platform].url }}"
     dest: "{{ branectl_local_bin }}"
     mode: "0755"
     owner: "{{ ansible_user }}"
+    checksum: "sha256:{{ branectl_artifacts[branectl_platform].sha256 }}"
   tags: [branectl]
 
-# something 1
 - name: "branectl | Verify binary runs"
   ansible.builtin.command:
     cmd: "{{ branectl_local_bin }} version"
@@ -20,7 +61,6 @@
   failed_when: _branectl_version.rc != 0
   tags: [branectl]
 
-# something 1
 - name: "branectl | Show version"
   ansible.builtin.debug:
     msg: "branectl version: {{ _branectl_version.stdout }}"

@@ -56,7 +56,8 @@
 - name: "Worker | Download worker release tarball"
   become: false
   ansible.builtin.get_url:
-    url: "{{ _brane_release_base }}/{{ brane_worker_tarball }}"
+    url: "{{ brane_release.assets[brane_worker_tarball].url }}"
+    checksum: "sha256:{{ brane_worker_tarball_sha256 }}"
     dest: "/tmp/{{ brane_worker_tarball }}"
     mode: "0644"
 
@@ -179,13 +180,14 @@
   loop:
     - "{{ brane_worker_install_dir }}/config/certs/server-key.pem"
     - "{{ brane_worker_install_dir }}/config/certs/ca-key.pem"
+    - "{{ brane_worker_install_dir }}/config/secrets/policy_store_keys.json"
 
 # ── Compose file ───────────────────────────────────────────────────────────────
 
-- name: "Worker | Download docker-compose.yml from Git repo"
+- name: "Worker | Copy docker-compose.yml from the deployment checkout"
   become: false
-  ansible.builtin.get_url:
-    url: "{{ brane_worker_compose_url }}"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../scripts/templates/worker-compose.yml"
     dest: "{{ brane_worker_install_dir }}/docker-compose.yml"
     mode: "0644"
     owner: "{{ ansible_user }}"
@@ -277,8 +279,8 @@
       BRANE_CENTRAL_IP={{ hostvars[groups['central'][0]]['ansible_host'] }}
       WORKER_A_IP={{ hostvars[groups['workers'][0]]['ansible_host'] }}
       WORKER_B_IP={{ hostvars[groups['workers'][1]]['ansible_host'] }}
-      REG_PORT=50051
-      JOB_PORT=50052
+      REG_PORT={{ brane_reg_port }}
+      JOB_PORT={{ brane_job_port }}
 
 # ── Docker images ──────────────────────────────────────────────────────────────
 

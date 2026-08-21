@@ -4,7 +4,11 @@
 **Host:** ab-01.lab.uvalight.net
 **Reporter:** adam
 
-## 1. Issue: `branectl start proxy` fails due to un-sanitized version tag (`+` symbol)
+> **Historical note:** The following nightly-build incident predates the
+> checksum-locked `test` release baseline. It is retained for diagnosis of old
+> deployments and is not current deployment guidance.
+
+## 1. Historical issue: `branectl start proxy` fails due to an un-sanitized version tag (`+` symbol)
 
 ### **The Problem**
 When attempting to run `branectl start proxy` using the `3.0.0-nightly+fdbbd6c2` build, the execution fails during the `docker compose up` phase. 
@@ -254,5 +258,5 @@ run_workflow() {
 2. Revert `.bs` files to original syntax.
 3. Select the correct instance: `brane instance select wscbs-uva`.
 4. Update `run-smoke-test.sh` to use stable CLI syntax (`brane run` instead of `brane workflow run --remote`).
-5. Pin `BRANE_VERSION=3.0.0` in the smoke test script and document that the nightly build is not supported.
+5. Use the checksum-locked smoke-test `branelet` supplied by the Ansible release manifest; do not set `BRANE_VERSION` manually.
 
