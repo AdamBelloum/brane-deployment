@@ -17,13 +17,17 @@
 #     - All Brane buildx builder instances
 #     - The ~/brane-central deployment directory and ALL its contents
 #       (configuration files, certificates, infra.yml, node.yml, etc.)
-#     - Brane release tarballs in /tmp
+#     - Previously installed user CLI binaries:
+#         ~/.local/bin/brane and ~/.local/bin/branectl
+#     - Brane release tarballs and cached smoke-test branelet binaries in /tmp
 #
 #   On each WORKER node (group: workers):
 #     - All running and stopped Brane Docker containers
 #     - All Brane Docker images
 #     - All Brane Docker volumes
 #     - The ~/brane-worker deployment directory and ALL its contents
+#     - Previously installed user CLI binaries:
+#         ~/.local/bin/brane and ~/.local/bin/branectl
 #     - Brane release tarballs in /tmp
 #
 # WHAT THIS SCRIPT DOES NOT TOUCH:
@@ -31,15 +35,14 @@
 #     (pre-shared keys must remain intact for the next deployment)
 #   - Non-Brane Docker containers, images, or volumes
 #   - System packages or Docker installation itself
-#   - Any files outside ~/brane-central and ~/brane-worker
+#   - Other files in ~/.local/bin
+#   - Any files outside ~/brane-central and ~/brane-worker, apart from the
+#     explicitly listed Brane CLI binaries and /tmp Brane artefacts
 #
 # CONSEQUENCE:
-#   After running this script, the Brane deployment is completely gone.
-#   A full re-deployment via the Ansible playbooks is required before
-#   Brane can be used again. This includes re-running:
-#     1. The infrastructure setup playbook
-#     2. The central node deployment playbook
-#     3. The worker node deployment playbook(s)
+#   After running this script, the Brane deployment and any previously
+#   installed per-user Brane CLI binaries are gone. A full re-deployment via
+#   the Ansible playbooks is required before Brane can be used again.
 #
 # PREREQUISITES:
 #   - Run from the brane-deployment repository root on the CONTROL machine
@@ -99,6 +102,7 @@ echo -e "${RED}║    • All Brane Docker containers (running and stopped)     
 echo -e "${RED}║    • All Brane Docker images and volumes                     ║${NC}"
 echo -e "${RED}║    • ~/brane-central  (central node)                        ║${NC}"
 echo -e "${RED}║    • ~/brane-worker   (each worker node)                    ║${NC}"
+echo -e "${RED}║    • ~/.local/bin/brane and ~/.local/bin/branectl           ║${NC}"
 echo -e "${RED}║                                                              ║${NC}"
 echo -e "${RED}║  A full re-deployment will be required afterwards.          ║${NC}"
 echo -e "${RED}║  SSH keys are NOT affected.                                 ║${NC}"
@@ -140,6 +144,7 @@ set -euo pipefail
 DEPLOY_USER="${ANSIBLE_REMOTE_USER}"
 USER_HOME=\$(getent passwd "\$DEPLOY_USER" | cut -d: -f6)
 CENTRAL_DIR="\$USER_HOME/brane-central"
+CLI_DIR="\$USER_HOME/.local/bin"
 
 echo "[central] Targeting directory: \$CENTRAL_DIR"
 
@@ -188,8 +193,20 @@ else
   echo "[central] \$CENTRAL_DIR not found, skipping."
 fi
 
-# 7. Remove release tarballs
-rm -f /tmp/instance-x86_64.tar.gz /tmp/brane*.tar.gz
+# 7. Remove stale per-user Brane CLI binaries
+# Do not remove the ~/.local/bin directory itself: it may contain unrelated tools.
+echo "[central] Removing stale Brane CLI binaries from \$CLI_DIR..."
+rm -f "\$CLI_DIR/brane" "\$CLI_DIR/branectl"
+
+for BINARY in "\$CLI_DIR/brane" "\$CLI_DIR/branectl"; do
+  if [ -e "\$BINARY" ] || [ -L "\$BINARY" ]; then
+    echo "[central] ERROR: CLI binary was not removed: \$BINARY" >&2
+    exit 1
+  fi
+done
+
+# 8. Remove release tarballs and cached smoke-test branelet binaries
+rm -f /tmp/instance-x86_64.tar.gz /tmp/brane*.tar.gz /tmp/branelet-*
 
 echo "[central] Done."
 ENDOFSCRIPT
@@ -203,6 +220,7 @@ set -euo pipefail
 DEPLOY_USER="${ANSIBLE_REMOTE_USER}"
 USER_HOME=\$(getent passwd "\$DEPLOY_USER" | cut -d: -f6)
 WORKER_DIR="\$USER_HOME/brane-worker"
+CLI_DIR="\$USER_HOME/.local/bin"
 
 echo "[worker] Targeting directory: \$WORKER_DIR"
 
@@ -244,7 +262,19 @@ else
   echo "[worker] \$WORKER_DIR not found, skipping."
 fi
 
-# 6. Remove release tarballs
+# 6. Remove stale per-user Brane CLI binaries
+# Do not remove the ~/.local/bin directory itself: it may contain unrelated tools.
+echo "[worker] Removing stale Brane CLI binaries from \$CLI_DIR..."
+rm -f "\$CLI_DIR/brane" "\$CLI_DIR/branectl"
+
+for BINARY in "\$CLI_DIR/brane" "\$CLI_DIR/branectl"; do
+  if [ -e "\$BINARY" ] || [ -L "\$BINARY" ]; then
+    echo "[worker] ERROR: CLI binary was not removed: \$BINARY" >&2
+    exit 1
+  fi
+done
+
+# 7. Remove release tarballs
 rm -f /tmp/worker-instance-x86_64.tar.gz /tmp/brane*.tar.gz
 
 echo "[worker] Done."

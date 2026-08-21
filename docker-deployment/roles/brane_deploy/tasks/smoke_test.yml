@@ -2,11 +2,11 @@
 # roles/brane/tasks/smoke_test.yml
 # Run on: central node only.
 # Expects the smoke test script to be present in the extracted tarball at
-# scripts/run-smoke-test.sh, and expects output "pong-from-worker" twice.
+# smoke-test/run-smoke-test.sh, and expects output "pong-from-worker" twice.
 
 - name: "Smoke test | Check smoke test script exists"
   ansible.builtin.stat:
-    path: "{{ brane_central_install_dir }}/target/release/scripts/smoke-test/run-smoke-test.sh"
+    path: "{{ brane_central_install_dir }}/target/release/smoke-test/run-smoke-test.sh"
   register: _smoke_script
   tags: [smoke]
 
@@ -14,14 +14,14 @@
   ansible.builtin.fail:
     msg: >
       Smoke test script not found at
-      {{ brane_central_install_dir }}/target/release/scripts/run-smoke-test.sh.
+      {{ brane_central_install_dir }}/target/release/smoke-test/run-smoke-test.sh.
       Check that the central tarball was extracted correctly.
   when: not _smoke_script.stat.exists
   tags: [smoke]
 
 - name: "Smoke test | Run smoke test"
   ansible.builtin.command:
-    cmd: bash scripts/smoke-test/run-smoke-test.sh
+    cmd: bash smoke-test/run-smoke-test.sh
     chdir: "{{ brane_central_install_dir }}/target/release/"
   register: _smoke_result
   changed_when: false

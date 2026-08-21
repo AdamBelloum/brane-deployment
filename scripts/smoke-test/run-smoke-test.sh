@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-
-
-https://github.com/BraneFramework/brane/releases/download/test/branelet-linux-x86_64
-
-# Resolve paths relative to the repo root so the script can be run from anywhere.
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGE_DIR="$ROOT_DIR/scripts/smoke-test/moke-test-package"
+# Resolve paths relative to this deployed smoke-test directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACKAGE_DIR="$SCRIPT_DIR/smoke-test-package"
 
 # By default we test against the currently selected local Brane instance.
 # `INSTANCE_NAME` can override that when we want to target a specific cluster.

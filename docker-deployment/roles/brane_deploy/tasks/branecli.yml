@@ -1,35 +1,58 @@
 ---
-# roles/brane/tasks/branecli.yml
-# Download and install the brane binary (on controler, no sudo).
+# Install the correct Brane CLI for the current Ansible target host.
 
-# create ./local/bin directories
-- name: "Control | Create .local/bin directory"
+- name: "Brane CLI | Normalise operating-system name"
+  ansible.builtin.set_fact:
+    brane_cli_os: >-
+      {{
+        {
+          'Darwin': 'darwin',
+          'Linux': 'linux'
+        }.get(ansible_system, ansible_system | lower)
+      }}
+
+- name: "Brane CLI | Normalise architecture name"
+  ansible.builtin.set_fact:
+    brane_cli_arch: >-
+      {{
+        {
+          'x86_64': 'x86_64',
+          'amd64': 'x86_64',
+          'arm64': 'aarch64',
+          'aarch64': 'aarch64'
+        }.get(ansible_architecture | lower, ansible_architecture | lower)
+      }}
+
+- name: "Brane CLI | Select platform key"
+  ansible.builtin.set_fact:
+    brane_cli_platform: "{{ brane_cli_os }}-{{ brane_cli_arch }}"
+    brane_cli_install_path: "{{ ansible_env.HOME }}/.local/bin/brane"
+
+- name: "Brane CLI | Reject unsupported platform"
+  ansible.builtin.assert:
+    that:
+      - brane_cli_platform in brane_cli_artifacts
+      - brane_cli_artifacts[brane_cli_platform].url | length > 0
+      - brane_cli_artifacts[brane_cli_platform].sha256 | length == 64
+    fail_msg: >-
+      No pinned Brane CLI artefact is configured for
+      {{ ansible_system }} / {{ ansible_architecture }}
+      (normalised as {{ brane_cli_platform }}).
+
+- name: "Brane CLI | Create user binary directory"
   ansible.builtin.file:
     path: "{{ ansible_env.HOME }}/.local/bin"
     state: directory
     mode: "0755"
-  become: false
-  tags: [branecli]
 
-# download brane CLI
-- name: "Control | Download brane CLI"
+- name: "Brane CLI | Download pinned binary"
   ansible.builtin.get_url:
-    url: "{{ brane_cli_url }}"
-    dest: "{{ ansible_env.HOME }}/.local/bin/brane"
+    url: "{{ brane_cli_artifacts[brane_cli_platform].url }}"
+    dest: "{{ brane_cli_install_path }}"
     mode: "0755"
-  become: false
-  tags: [branecli]
+    checksum: "sha256:{{ brane_cli_artifacts[brane_cli_platform].sha256 }}"
 
-# verify installed brane  CLI
-- name: "Control | Verify brane CLI installed"
-  ansible.builtin.command: "{{ ansible_env.HOME }}/.local/bin/brane --version"
-  register: brane_version
+- name: "Brane CLI | Verify binary starts"
+  ansible.builtin.command:
+    cmd: "{{ brane_cli_install_path }} --help"
   changed_when: false
-  become: false
-  tags: [branecli]
-
-# show version of brane CLI
-- name: "brane cli | Show version"
-  ansible.builtin.debug:
-    msg: "brane version: {{ brane_version.stdout }}"
-  tags: [branecli]

@@ -179,6 +179,7 @@
   loop:
     - "{{ brane_worker_install_dir }}/config/certs/server-key.pem"
     - "{{ brane_worker_install_dir }}/config/certs/ca-key.pem"
+    - "{{ brane_worker_install_dir }}/config/secrets/policy_store_keys.json"
 
 # ── Compose file ───────────────────────────────────────────────────────────────
 
