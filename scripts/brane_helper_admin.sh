@@ -281,7 +281,7 @@ run_healthcheck() {
 
 gen_client_cert() {
     echo ""
-    log_info "Generate client certificate for a user or policy manager."
+    log_info "Issue a Brane user certificate bundle."
     echo ""
     local cert_script="${SCRIPT_DIR}/brane_gen_cert.sh"
     if [[ ! -f "${cert_script}" ]]; then
@@ -329,36 +329,121 @@ add_certs() {
 
 gen_policy_token() {
     echo ""
-    log_info "Generate a policy expert token for a policy manager."
+    log_info "Generate a policy-manager token on a domain worker."
     echo ""
-    echo "  This token grants the holder the right to upload and"
-    echo "  activate policies on the specified domain."
+    echo "  The domain ID becomes the token's SYSTEM claim."
+    echo "  The worker inventory host selects where the token is signed."
     echo ""
 
-    local name domain_id validity output_path
-    read -r -p "  Policy manager name (e.g. alice)  : " name
-    read -r -p "  Domain ID (worker hostname/ID)    : " domain_id
-    read -r -p "  Validity period [default: 30d]    : " validity
+    local name domain_id worker_alias validity output_path
+    local repo_root token_dir default_output
+    local worker_json connection worker_host worker_user
+    local remote_token remote_cmd
+
+    read -r -p "  Policy manager name (e.g. alice)            : " name
+    read -r -p "  Domain ID / SYSTEM claim (e.g. ab-02...)     : " domain_id
+    read -r -p "  Worker inventory host (e.g. worker-vm-2)    : " worker_alias
+    read -r -p "  Validity period [default: 30d]              : " validity
     validity="${validity:-30d}"
-    read -r -e -p "  Output path [default: ./policy_token_${name}.json]: " output_path
-    output_path="${output_path:-./policy_token_${name}.json}"
 
-    if [[ -z "${name}" || -z "${domain_id}" ]]; then
-        log_error "Name and domain ID are required. Aborting."
+    if [[ -z "${name}" || -z "${domain_id}" || -z "${worker_alias}" ]]; then
+        log_error "Policy-manager name, domain ID, and worker inventory host are required."
         press_enter
         return 1
     fi
 
-    run_cmd "branectl generate policy_token '${name}' '${domain_id}' '${validity}' \
--s '${POLICY_EXPERT_SECRET}' \
--o '${output_path}'"
-
-    if [[ $? -eq 0 && -f "${output_path}" ]]; then
-        echo ""
-        log_success "Token saved to: ${output_path}"
-        echo "  → Send this file securely to the policy manager."
-        echo "  → They will need it in brane_helper_policy.sh → Setup."
+    if [[ ! "${name}" =~ ^[A-Za-z0-9._-]+$ ]] \
+        || [[ ! "${domain_id}" =~ ^[A-Za-z0-9._:-]+$ ]] \
+        || [[ ! "${worker_alias}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        log_error "Name, domain ID, and worker alias may contain only letters, digits, dots, underscores, hyphens, and (for the domain ID) colons."
+        press_enter
+        return 1
     fi
+
+    repo_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    token_dir="${repo_root}/policy_tokens"
+    default_output="${token_dir}/policy_token_${name}_${domain_id}.json"
+
+    read -r -e -p "  Output path [default: ${default_output}]: " output_path
+    output_path="${output_path:-${default_output}}"
+
+    if [[ -e "${output_path}" ]]; then
+        log_error "Refusing to overwrite existing token: ${output_path}"
+        press_enter
+        return 1
+    fi
+
+    preflight_admin || return 1
+    if ! command -v ansible-inventory >/dev/null 2>&1 \
+        || ! command -v ssh >/dev/null 2>&1 \
+        || ! command -v scp >/dev/null 2>&1 \
+        || ! command -v python3 >/dev/null 2>&1; then
+        log_error "Token generation requires ansible-inventory, ssh, scp, and python3."
+        press_enter
+        return 1
+    fi
+
+    if ! worker_json="$(ansible-inventory -i "${ANSIBLE_INVENTORY}" --host "${worker_alias}")"; then
+        log_error "Could not resolve inventory host: ${worker_alias}"
+        press_enter
+        return 1
+    fi
+
+    connection="$(
+        python3 -c '
+import json, sys
+host = json.load(sys.stdin)
+print("{}|{}".format(host.get("ansible_host", ""), host.get("ansible_user", "")))
+' <<< "${worker_json}"
+    )"
+    IFS='|' read -r worker_host worker_user <<< "${connection}"
+
+    if [[ -z "${worker_host}" || -z "${worker_user}" ]]; then
+        log_error "Inventory host '${worker_alias}' has no ansible_host or ansible_user."
+        press_enter
+        return 1
+    fi
+
+    mkdir -p "$(dirname "${output_path}")"
+    remote_token="/tmp/brane-policy-token-${name}-$(date +%s)-${RANDOM}.json"
+
+    printf -v remote_cmd \
+        'set -eu; umask 077; cd "$HOME/brane-worker"; "$HOME/.local/bin/branectl" generate policy_token %q %q %q --secret-path ./config/secrets/policy_expert_secret.json --path %q; chmod 600 %q' \
+        "${name}" "${domain_id}" "${validity}" "${remote_token}" "${remote_token}"
+
+    echo ""
+    log_info "Domain claim : ${domain_id}"
+    log_info "Worker       : ${worker_alias} (${worker_user}@${worker_host})"
+
+    if ! run_remote "${worker_host}" "${worker_user}" "${remote_cmd}"; then
+        ssh -o StrictHostKeyChecking=no "${worker_user}@${worker_host}" \
+            "rm -f -- '${remote_token}'" >/dev/null 2>&1 || true
+        press_enter
+        return 1
+    fi
+
+    log_info "Copying token to: ${output_path}"
+    if ! scp -o StrictHostKeyChecking=no \
+        "${worker_user}@${worker_host}:${remote_token}" "${output_path}"; then
+        log_error "Token copy failed; removing the remote temporary token."
+        ssh -o StrictHostKeyChecking=no "${worker_user}@${worker_host}" \
+            "rm -f -- '${remote_token}'" >/dev/null 2>&1 || true
+        press_enter
+        return 1
+    fi
+
+    chmod 600 "${output_path}"
+    if ! ssh -o StrictHostKeyChecking=no "${worker_user}@${worker_host}" \
+        "rm -f -- '${remote_token}'"; then
+        log_error "Local token was saved, but remote temporary-token cleanup failed: ${remote_token}"
+        press_enter
+        return 1
+    fi
+
+    echo ""
+    log_success "Token saved securely to: ${output_path}"
+    echo "  → Send this file securely to the policy manager."
+    echo "  → It is ignored by Git; do not commit it."
     press_enter
 }
 
@@ -502,7 +587,7 @@ while true; do
     echo ""
 
     section_divider "3. Certificates"
-    echo    "  17)  Generate client certificate for user/policy manager"
+    echo    "  17)  Issue a user certificate bundle"
     echo    "  18)  List certificates"
     echo    "  19)  Add certificates to instance"
     echo ""

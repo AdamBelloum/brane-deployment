@@ -6,6 +6,9 @@
 frontend/runtime/*
 !frontend/runtime/.gitkeep
 
+
+policy_tokens/*.json
+
 # Private keys and certificates
 *.pem
 *.key
@@ -96,3 +99,6 @@ policies/*
 !policies/.gitkeep
 policy_tokens/*
 !policy_tokens/.gitkeep
+
+# Locally issued user credential bundles and issuance metadata
+certs/users/
