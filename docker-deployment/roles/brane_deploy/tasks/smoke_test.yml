@@ -24,6 +24,8 @@
     cmd: bash smoke-test/run-smoke-test.sh
     chdir: "{{ brane_central_install_dir }}/target/release/"
   environment:
+    PATH: "{{ brane_user_home }}/.local/bin:{{ ansible_env.PATH }}"
+    BRANE_BIN: "{{ brane_user_home }}/.local/bin/brane"
     BRANE_RELEASE_TAG: "{{ brane_release.tag }}"
     BRANELET_URL: "{{ branelet_url }}"
     BRANELET_SHA256: "{{ branelet_sha256 }}"

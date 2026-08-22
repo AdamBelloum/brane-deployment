@@ -40,8 +40,8 @@ brane_release:
       sha256: "0f02cfc20007b8d4774020d3cfe6e1b7c526b492a1144801bfb877fbbf9b0027"
 
 # Images are loaded from the locked archives and tagged locally for Compose.
-brane_image_tag: "test"
-brane_image_version: "test"
+brane_image_tag: "{{ brane_release.tag }}"
+brane_image_version: "{{ brane_release.tag }}"
 
 brane_central_tarball: "central-instance-x86_64.tar.gz"
 brane_central_tarball_sha256: "{{ brane_release.assets[brane_central_tarball].sha256 }}"

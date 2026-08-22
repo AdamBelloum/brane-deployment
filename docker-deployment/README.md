@@ -209,3 +209,45 @@ See [`docs/`](docs/) for troubleshooting guides, or run the interactive troubles
 ```bash
 bash ../scripts/troubleshoot-brane-deployment.sh
 ```
+
+## Selecting a Brane release
+
+`group_vars/all.yml` is the deployment’s single release lock. It records a
+GitHub release tag, direct asset URLs, and SHA-256 digests. Docker image tags
+are derived from `brane_release.tag`; do not set image versions independently.
+
+Use the administrator selector to inspect releases:
+
+```bash
+./scripts/select-brane-release.py
+```
+
+The selector displays every GitHub release. A release is selectable only when
+it supplies the x86_64 CLI and central/worker deployment archives required by
+this repository, with published SHA-256 digests.
+
+Preview a prospective release lock without changing anything:
+
+```bash
+./scripts/select-brane-release.py --dry-run
+```
+
+Selecting the already locked release performs no action. Selecting a different
+release requires typing `CLEAN`. The selector then runs:
+
+```bash
+ansible-playbook -i inventories/production/hosts.ini site.yml --tags cleanup
+```
+
+This removes Brane runtime artefacts on the central and worker nodes, including
+Compose resources, named Brane images, generated configuration, certificates,
+policy state, downloaded archives, package/data/result directories, and smoke
+test output. It preserves this repository, the inventory, SSH configuration,
+and source directories such as `packages/`, `certs/`, `datasets/`, `policies/`,
+and `policy_tokens/`.
+
+After a successful selection, deploy the locked release normally:
+
+```bash
+ansible-playbook -i inventories/production/hosts.ini site.yml
+```

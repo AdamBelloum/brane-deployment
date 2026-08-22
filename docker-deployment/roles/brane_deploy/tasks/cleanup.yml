@@ -1,0 +1,59 @@
+---
+# Removes only Brane deployment artefacts. It preserves the repository,
+# Ansible inventory, and SSH access configuration.
+
+- name: "Cleanup | Stop Brane Compose projects"
+  ansible.builtin.shell: |
+    set -u
+    if [ -f "{{ item }}/docker-compose.yml" ]; then
+      docker compose --project-directory "{{ item }}" down \
+        --volumes \
+        --remove-orphans \
+        || true
+    fi
+  args:
+    executable: /bin/bash
+  loop:
+    - "{{ brane_central_install_dir }}"
+    - "{{ brane_worker_install_dir }}"
+    - "{{ brane_proxy_install_dir }}"
+  changed_when: false
+  tags: [cleanup]
+
+- name: "Cleanup | Remove Brane Docker images"
+  ansible.builtin.shell: |
+    set -u -o pipefail
+    for image in \
+      brane-api brane-drv brane-plr brane-prx \
+      brane-reg brane-job brane-chk
+    do
+      docker image ls \
+        --format '{{ "{{" }}.Repository{{ "}}" }}:{{ "{{" }}.Tag{{ "}}" }}' \
+        "$image" \
+        | grep -v '^<none>:' \
+        | xargs -r docker image rm --force \
+        || true
+    done
+  args:
+    executable: /bin/bash
+  changed_when: false
+  tags: [cleanup]
+
+- name: "Cleanup | Remove Brane installation directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ brane_central_install_dir }}"
+    - "{{ brane_worker_install_dir }}"
+    - "{{ brane_proxy_install_dir }}"
+  tags: [cleanup]
+
+- name: "Cleanup | Remove downloaded Brane release archives"
+  ansible.builtin.file:
+    path: "/tmp/{{ item }}"
+    state: absent
+  loop:
+    - "{{ brane_central_tarball }}"
+    - "{{ brane_worker_tarball }}"
+  tags: [cleanup]

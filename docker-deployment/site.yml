@@ -87,3 +87,14 @@
       include_role:
         name: brane_deploy
         tasks_from: smoke_test
+
+- name: "Brane — remove deployment artefacts for a version change"
+  hosts: all_brane_nodes
+  become: false
+  gather_facts: false
+  tags: [cleanup]
+  tasks:
+    - name: "Include cleanup tasks"
+      ansible.builtin.include_role:
+        name: brane_deploy
+        tasks_from: cleanup

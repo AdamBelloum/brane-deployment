@@ -8,8 +8,6 @@
 
 # The deployment-level checksum-locked release manifest is defined in
 # docker-deployment/group_vars/all.yml.
-brane_image_tag: "test"
-brane_image_version: "test"
 
 ############################
 # Tarball names

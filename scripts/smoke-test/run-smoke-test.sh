@@ -13,6 +13,10 @@ BRANELET_PATH="${BRANELET_PATH:-/tmp/branelet-x86_64-${BRANE_RELEASE_TAG}}"
 
 # `INSTANCE_NAME` can override the currently selected local Brane instance.
 INSTANCE_NAME="${INSTANCE_NAME:-}"
+# The test release requires a use-case before the workflow path.
+USE_CASE="${USE_CASE:-test}"
+# Ansible pins this to the test-release CLI; retain PATH fallback for manual use.
+BRANE_BIN="${BRANE_BIN:-brane}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -79,10 +83,10 @@ download_branelet() {
 run_workflow() {
   local workflow="$1"
   printf 'Running %s\n' "$(basename "$workflow")"
-  brane run -r "$workflow"
+  "$BRANE_BIN" workflow run --remote "$USE_CASE" "$workflow"
 }
 
-need_cmd brane
+need_cmd "$BRANE_BIN"
 need_cmd curl
 need_cmd docker
 need_cmd sed
@@ -93,13 +97,13 @@ ensure_builder
 download_branelet
 
 if [ -n "$INSTANCE_NAME" ]; then
-  brane instance select "$INSTANCE_NAME" >/dev/null
+  "$BRANE_BIN" instance select "$INSTANCE_NAME" >/dev/null
 fi
 
 # Build and publish the tiny smoke-test package, then run one workflow on each
 # worker so we verify that scheduling and remote execution both work.
-brane build -a x86_64 -i "$BRANELET_PATH" "$PACKAGE_DIR/container.yml"
-brane push brane_smoke_test >/dev/null
+"$BRANE_BIN" package build -a x86_64 -i "$BRANELET_PATH" "$PACKAGE_DIR/container.yml"
+"$BRANE_BIN" package push brane_smoke_test >/dev/null
 
 run_workflow "$PACKAGE_DIR/worker-a.bs"
 run_workflow "$PACKAGE_DIR/worker-b.bs"
