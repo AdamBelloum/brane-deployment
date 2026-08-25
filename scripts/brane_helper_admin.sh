@@ -184,8 +184,16 @@ run_healthcheck() {
         local HOST="${WORKER_IPS[$i]}"
         local NODE="${WORKER_HOSTNAMES[$i]}"
         local WDIR="${WORKER_INSTALL_DIR}"
-        local JOB_NAME="brane-job-${NODE}"
-        local CHK_NAME="brane-chk-${NODE}"
+        local LOCATION_ID
+        LOCATION_ID=$(_hc_ansible_var "${NODE}" "location_id")
+        if [[ -z "${LOCATION_ID}" ]]; then
+            _hc_record "FAIL" "${NODE}" "configuration" "location_id is missing from inventory"
+            i=$((i + 1))
+            continue
+        fi
+
+        local JOB_NAME="brane-job-${LOCATION_ID}"
+        local CHK_NAME="brane-chk-${LOCATION_ID}"
 
         if _hc_should_check "${NODE}"; then
             log_info "Checking worker node: ${NODE} (${HOST})..."
@@ -196,7 +204,7 @@ run_healthcheck() {
             _hc_check_container "${NODE}" "${HOST}" "${CHK_NAME}"
 
             _hc_check_port "${NODE}" "${HOST}" "${WORKER_REG_PORT}" "brane-reg"
-            _hc_check_port "${NODE}" "${HOST}" "${WORKER_JOB_PORT}" "brane-job"
+            _hc_check_port "${NODE}" "${HOST}" "${WORKER_JOB_PORT}" "brane-chk / brane-job shared endpoint"
 
             _hc_check_mount "${NODE}" "${HOST}" "brane-prx"    "/node.yml"
             _hc_check_mount "${NODE}" "${HOST}" "brane-prx"    "${WDIR}/config/certs"
@@ -209,7 +217,7 @@ run_healthcheck() {
             _hc_check_mount "${NODE}" "${HOST}" "${CHK_NAME}"  "/node.yml"
             _hc_check_mount "${NODE}" "${HOST}" "${CHK_NAME}"  "${WDIR}/config/certs"
             _hc_check_mount "${NODE}" "${HOST}" "${CHK_NAME}"  "${WDIR}/config/secrets"
-            _hc_check_mount "${NODE}" "${HOST}" "${CHK_NAME}"  "${WDIR}/policies.db"
+            _hc_check_mount "${NODE}" "${HOST}" "${CHK_NAME}"  "/home/brane/policy/policies.db"
             _hc_check_mount "${NODE}" "${HOST}" "${JOB_NAME}"  "/node.yml"
             _hc_check_mount "${NODE}" "${HOST}" "${JOB_NAME}"  "${WDIR}/config/certs"
             _hc_check_mount "${NODE}" "${HOST}" "${JOB_NAME}"  "${WDIR}/packages"
