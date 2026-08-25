@@ -56,7 +56,7 @@ services:
       - "127.0.0.1:${POLICY_CHECKER_PORT:-50054}:50054"
     volumes:
       - ${NODE_CONFIG_PATH}:/node.yml
-      - ${POLICIES}:${POLICIES}
+      - ${POLICIES}:/home/brane/policy/policies.db
       - ${CERTS}:${CERTS}
       - ${SECRETS}:${SECRETS}
 
