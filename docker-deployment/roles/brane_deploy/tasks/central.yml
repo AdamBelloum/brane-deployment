@@ -181,6 +181,7 @@
       server central
       -H {{ ansible_host }}
     chdir: "{{ brane_central_install_dir }}"
+    creates: "{{ brane_central_install_dir }}/config/certs/ca.pem" # avoid regenerating certifcates if they exist
   changed_when: true
   become: false
   tags: [central]

@@ -120,6 +120,15 @@
     chdir: "{{ brane_worker_install_dir }}"
   changed_when: true
 
+- name: "Worker | Grant checker UID 1000 write access to policy database"
+  ansible.posix.acl:
+    path: "{{ brane_worker_install_dir }}/policies.db"
+    entity: "1000"
+    etype: user
+    permissions: rw
+    state: present
+    recalculate_mask: mask
+
 - name: "Worker | Generate node.yml"
   become: false
   ansible.builtin.command: >
@@ -136,7 +145,7 @@
 
 # ── Certificate generation ─────────────────────────────────────────────────────
 
-- name: "Worker | Generate server certs"
+- name: "Worker | Generate server certs when no domain CA is present"
   become: false
   ansible.builtin.command:
     cmd: >
@@ -145,6 +154,7 @@
       server {{ location_id }}
       -H {{ brane_hostname }}
     chdir: "{{ brane_worker_install_dir }}"
+    creates: "{{ brane_worker_install_dir }}/config/certs/ca.pem" # NEW change to avoid recreting certificate
   changed_when: true
 
 - name: "Worker | Copy CA cert into client-certs/"
@@ -181,6 +191,17 @@
     - "{{ brane_worker_install_dir }}/config/certs/server-key.pem"
     - "{{ brane_worker_install_dir }}/config/certs/ca-key.pem"
     - "{{ brane_worker_install_dir }}/config/secrets/policy_store_keys.json"
+
+- name: "Worker | Restrict local certificate private keys"
+  become: false
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0600"
+  loop:
+    - "{{ brane_worker_install_dir }}/config/certs/ca-key.pem"
+    - "{{ brane_worker_install_dir }}/config/certs/server-key.pem"
 
 # ── Compose file ───────────────────────────────────────────────────────────────
 

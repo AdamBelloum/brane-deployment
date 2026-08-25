@@ -73,13 +73,33 @@
   become: false
   tags: [certs]
 
-- name: "Certs | Copy central CA to worker"
-  ansible.builtin.command: >
-    scp -o StrictHostKeyChecking=accept-new
-    {{ ansible_user }}@{{ hostvars[groups['central'][0]]['ansible_host'] }}:{{ brane_central_install_dir }}/config/certs/ca.pem
-    {{ brane_worker_install_dir }}/config/certs/central/ca.pem
-  delegate_to: "{{ inventory_hostname }}"
+- name: "Certs | Set copied worker CA permissions on central"
+  ansible.builtin.file:
+    path: "{{ brane_central_install_dir }}/config/certs/{{ location_id }}/ca.pem"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+  delegate_to: "{{ groups['central'][0] }}"
   when: inventory_hostname in groups['workers']
   become: false
   tags: [certs]
 
+- name: "Certs | Copy central CA to worker"
+  ansible.builtin.command: >
+    scp -o StrictHostKeyChecking=accept-new
+    {{ brane_central_install_dir }}/config/certs/ca.pem
+    {{ ansible_user }}@{{ hostvars[inventory_hostname]['ansible_host'] }}:{{ brane_worker_install_dir }}/config/certs/central/ca.pem
+  delegate_to: "{{ groups['central'][0] }}"
+  when: inventory_hostname in groups['workers']
+  become: false
+  tags: [certs]
+
+- name: "Certs | Set copied central CA permissions on worker"
+  ansible.builtin.file:
+    path: "{{ brane_worker_install_dir }}/config/certs/central/ca.pem"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+  when: inventory_hostname in groups['workers']
+  become: false
+  tags: [certs]
