@@ -488,7 +488,7 @@ while [ "$i" -lt "${#WORKER_IPS[@]}" ]; do
 
       load_mounts "$HOST" "$W_CHK"
       check_mount "$NODE" "$W_CHK" "$W_NODE_CONFIG" "/node.yml"
-      check_mount "$NODE" "$W_CHK" "$W_POLICIES" "$W_POLICIES"
+      check_mount "$NODE" "$W_CHK" "$W_POLICIES" "/home/brane/policy/policies.db"
       check_mount "$NODE" "$W_CHK" "$W_CERTS" "$W_CERTS"
       check_mount "$NODE" "$W_CHK" "$W_SECRETS" "$W_SECRETS"
 
