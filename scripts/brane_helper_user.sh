@@ -9,7 +9,7 @@
 #
 # Expected repo layout (auto-detected):
 #   packages/<name>/container.yml
-#   certs/<node>/ca.pem  client-id.pem  (or client.pem / client-key.pem)
+#   certs/<domain>/ca.pem  client-id.pem
 #   datasets/<name>/data/data.yml
 # =============================================================
 
@@ -242,7 +242,8 @@ add_certificate() {
     clear
     section_header "Add Certificate"
     printf '\n'
-    printf '  Certificates live in:  %s/<node>/\n' "${CERTS_DIR}"
+    printf '  Certificate bundles live in:  %s/<domain>/\n' "${CERTS_DIR}"
+    printf '  Required files: ca.pem and client-id.pem\n'
     printf '\n'
 
     if [[ ! -d "${CERTS_DIR}" ]]; then
@@ -254,68 +255,57 @@ add_certificate() {
         printf '\n'
     fi
 
-    printf '  Existing cert directories:\n'
+    printf '  Existing certificate directories:\n'
     _list_subdirs "${CERTS_DIR}"
     printf '\n'
 
-    printf '  Select instance to attach certificate to:\n\n'
+    printf '  Select the Brane instance to attach the certificate to:\n\n'
     _pick_instance || { press_enter; return 1; }
     printf '\n'
 
     local worker_domain
-    read -r -p "  Worker node IP or hostname : " worker_domain
-    [[ -z "${worker_domain}" ]] && { log_error "Worker domain required."; press_enter; return 1; }
+    read -r -p "  Brane domain ID (e.g. client-node-2): " worker_domain
+    [[ -z "${worker_domain}" ]] && {
+        log_error "A Brane domain ID is required."
+        press_enter
+        return 1
+    }
 
-    # ── Auto-detect cert files in certs/<worker_domain>/ ──
-    local ca_path="" client_path="" client_key_path=""
+    local ca_path="" client_id_path=""
     local node_dir="${CERTS_DIR}/${worker_domain}"
 
     if [[ -d "${node_dir}" ]]; then
-        log_info "Found cert directory: ${node_dir}"
+        log_info "Found certificate directory: ${node_dir}"
         printf '  Contents:\n'
         find "${node_dir}" -maxdepth 1 -type f | sort | sed 's/^/    /'
         printf '\n'
 
-        # Classify each .pem file:
-        #   ca.pem                → CA cert
-        #   *-key.pem             → client private key
-        #   client.pem / client-id.pem / client-*.pem (non-key) → client cert
-        while IFS= read -r f; do
-            local fname
-            fname="$(basename "${f}")"
-            if [[ "${fname}" == "ca.pem" ]]; then
-                ca_path="${f}"
-            elif [[ "${fname}" == *-key.pem ]]; then
-                client_key_path="${f}"
-            elif [[ "${fname}" == client*.pem ]]; then
-                client_path="${f}"
-            fi
-        done < <(find "${node_dir}" -maxdepth 1 -name "*.pem" -type f | sort)
+        [[ -f "${node_dir}/ca.pem" ]] && ca_path="${node_dir}/ca.pem"
+        [[ -f "${node_dir}/client-id.pem" ]] && client_id_path="${node_dir}/client-id.pem"
 
         printf '  Auto-detected:\n'
-        printf '    CA cert      : %s\n' "${ca_path:-(not found)}"
-        printf '    Client cert  : %s\n' "${client_path:-(not found)}"
-        printf '    Client key   : %s\n' "${client_key_path:-(not found)}"
+        printf '    CA certificate : %s\n' "${ca_path:-(not found)}"
+        printf '    Client identity: %s\n' "${client_id_path:-(not found)}"
         printf '\n'
 
         read -r -p "  Use these paths? [Y/n]: " yn
         if [[ "${yn}" == "n" || "${yn}" == "N" ]]; then
-            ca_path="" client_path="" client_key_path=""
+            ca_path=""
+            client_id_path=""
         fi
     fi
 
-    # Prompt for any still-missing paths
-    [[ -z "${ca_path}" ]]         && read -r -e -p "  Path to ca.pem             : " ca_path
-    [[ -z "${client_path}" ]]     && read -r -e -p "  Path to client cert (.pem) : " client_path
-    [[ -z "${client_key_path}" ]] && read -r -e -p "  Path to client-key.pem     : " client_key_path
+    [[ -z "${ca_path}" ]] && read -r -e -p "  Path to ca.pem        : " ca_path
+    [[ -z "${client_id_path}" ]] && \
+        read -r -e -p "  Path to client-id.pem : " client_id_path
 
-    if [[ -z "${ca_path}" || -z "${client_path}" || -z "${client_key_path}" ]]; then
-        log_error "All three certificate files are required."
+    if [[ -z "${ca_path}" || -z "${client_id_path}" ]]; then
+        log_error "Both ca.pem and client-id.pem are required."
         press_enter
         return 1
     fi
 
-    for f in "${ca_path}" "${client_path}" "${client_key_path}"; do
+    for f in "${ca_path}" "${client_id_path}"; do
         if [[ ! -f "${f}" ]]; then
             log_error "File not found: ${f}"
             press_enter
@@ -323,15 +313,15 @@ add_certificate() {
         fi
     done
 
-    run_cmd "brane certs add '${ca_path}' '${client_path}' '${client_key_path}' \
+    run_cmd "brane certs add '${ca_path}' '${client_id_path}' \
 --instance '${SEL_INSTANCE}' --domain '${worker_domain}'"
 
     if [[ $? -ne 0 ]]; then
         printf '\n'
         printf '  Common causes:\n'
-        printf '    • Certificate missing keyUsage = digitalSignature\n'
-        printf '    • Certificate missing extendedKeyUsage = clientAuth\n'
-        printf '    → Ask your admin to regenerate the certificate.\n'
+        printf '    • Client identity missing keyUsage = digitalSignature\n'
+        printf '    • Client identity missing extendedKeyUsage = clientAuth\n'
+        printf '    → Ask the administrator to issue a compatible bundle.\n'
     fi
 
     press_enter
@@ -471,49 +461,16 @@ run_remote_workflow() {
     section_header "Run Workflow on Remote Domain"
     printf '\n'
 
-    if [[ -z "${HOST_IP}" ]]; then
-        log_warn "No instance configured. Use option 2 to add one first."
-        press_enter
-        return 1
-    fi
-
-    log_info "Checking connectivity to ${HOST_IP}..."
+    log_warn "Remote workflow submission is currently paused."
     printf '\n'
-    local conn_ok=0
-    check_port "${HOST_IP}" "${PORT_REGISTRY}" "Registry (${HOST_IP}:${PORT_REGISTRY})" || conn_ok=1
-    check_port "${HOST_IP}" "${PORT_REPL}"     "Driver   (${HOST_IP}:${PORT_REPL})"     || conn_ok=1
+    printf '  The deployment infrastructure, certificates, packages, local\n'
+    printf '  execution, and policy-management path have been validated.\n'
     printf '\n'
-
-    if [[ "${conn_ok}" -eq 1 ]]; then
-        log_warn "Central node not reachable."
-        read -r -p "  Submit anyway? [y/N]: " yn
-        [[ "${yn}" != "y" && "${yn}" != "Y" ]] && return
-    fi
-
-    _pick_workflow
-
-    if [[ -z "${SEL_WORKFLOW}" || ! -f "${SEL_WORKFLOW}" ]]; then
-        log_error "Workflow file not found: ${SEL_WORKFLOW:-<empty>}"
-        press_enter
-        return 1
-    fi
-
-    local username
-    read -r -p "  Username [${BRANE_USER:-test}]: " username
-    username="${username:-${BRANE_USER:-test}}"
-
+    printf '  End-to-end remote execution is not yet accepted because the\n'
+    printf '  relationship between #[on("<domain>")] and the checker selected\n'
+    printf '  by the central planner is awaiting Brane developer clarification.\n'
     printf '\n'
-    log_info "Select the instance to submit to:"
-    printf '\n'
-    _pick_instance || { press_enter; return 1; }
-
-    printf '\n'
-    run_cmd "brane instance select '${SEL_INSTANCE}'"
-    run_cmd "brane workflow run --remote '${username}' '${SEL_WORKFLOW}'"
-
-    printf '\n'
-    printf '  Note: if execution is denied, the policy manager for\n'
-    printf '  that domain needs to activate a policy on the worker node.\n'
+    printf '  No remote workflow has been submitted by this helper.\n'
     press_enter
 }
 
