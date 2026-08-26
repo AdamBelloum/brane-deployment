@@ -109,6 +109,17 @@ def render_infra_deploy() -> None:
 
     if latest_task:
         selected_task_id = st.session_state.get("selected_deployment_task_id", latest_task["id"])
-        render_task_monitor(selected_task_id, title="Deployment progress")
+        if active_tasks:
+            render_task_monitor(selected_task_id, title="Deployment progress")
+        else:
+            st.info(
+                "No deployment is currently running. "
+                "Showing the most recent recorded deployment task."
+            )
+            render_task_monitor(
+                selected_task_id,
+                title="Most recent deployment task",
+                historical=True,
+            )
     else:
         st.caption("No deployment task has been started from this frontend yet.")
