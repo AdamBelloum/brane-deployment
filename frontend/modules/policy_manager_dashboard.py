@@ -248,18 +248,19 @@ def _start_policy_task(
 
 
 def _render_policy_context() -> Dict[str, object]:
-    """Render the shared token and worker context for policy operations."""
+    """Render the complete domain-local context for policy operations."""
     st.subheader("Policy context")
     st.caption(
-        "Choose the policy-manager token and target worker once. "
-        "The token is never displayed, stored in task metadata, or passed "
-        "as a command-line argument."
+        "Policies are domain-local. Select a token, worker host, SSH user, "
+        "Brane domain ID, and the worker node configuration. The token is "
+        "never displayed, stored in task metadata, or passed as a command-line "
+        "argument."
     )
 
     tokens = list_policy_tokens()
     workers = _get_worker_hosts()
 
-    token_column, worker_column, connection_column = st.columns([2, 2, 1])
+    token_column, target_column, connection_column = st.columns([2, 2, 2])
 
     with token_column:
         if tokens:
@@ -288,16 +289,16 @@ def _render_policy_context() -> Dict[str, object]:
             token_status = {"valid": False}
             st.error("No policy-manager tokens were found in `policy_tokens/`.")
 
-    with worker_column:
+    with target_column:
         if workers:
             worker_host = st.selectbox(
-                "Target worker",
+                "Worker host",
                 workers,
                 key="policy_context_worker",
             )
         else:
             worker_host = st.text_input(
-                "Target worker",
+                "Worker host",
                 key="policy_context_worker_manual",
                 placeholder="Worker hostname or IP address",
             )
@@ -307,24 +308,44 @@ def _render_policy_context() -> Dict[str, object]:
 
         ssh_user = st.text_input(
             "SSH user",
-            value="ubuntu",
             key="policy_context_ssh_user",
+            placeholder="The deployed worker login user",
+        )
+        domain_id = st.text_input(
+            "Brane domain ID",
+            key="policy_context_domain_id",
+            placeholder="e.g. client-node-2",
+            help=(
+                "This is the Brane location identifier, not necessarily the "
+                "worker hostname."
+            ),
         )
 
     with connection_column:
+        node_config = st.text_input(
+            "Worker node.yml",
+            key="policy_context_node_config",
+            placeholder="/home/<ssh-user>/brane-worker/node.yml",
+            help="The node configuration path on the selected worker.",
+        )
         brane_port = st.text_input(
-            "Policy-store port",
+            "Checker policy port",
             value="50054",
             key="policy_context_brane_port",
+            help="The checker endpoint is reached as 127.0.0.1:<port> "
+            "inside the checker network namespace.",
         )
 
         if st.button("Check SSH", key="policy_context_check_ssh"):
             if not worker_host.strip() or not ssh_user.strip():
-                st.error("A target worker and SSH user are required.")
+                st.error("A worker host and SSH user are required.")
             else:
                 _start_policy_task(
                     operation="policy_ssh_connectivity_check",
-                    label=f"Check SSH connectivity: {ssh_user.strip()}@{worker_host.strip()}",
+                    label=(
+                        "Check SSH connectivity: "
+                        f"{ssh_user.strip()}@{worker_host.strip()}"
+                    ),
                     command=[
                         "ssh",
                         "-o", "BatchMode=yes",
@@ -347,18 +368,26 @@ def _render_policy_context() -> Dict[str, object]:
     if ssh_task_id:
         render_task_monitor(ssh_task_id, title="Worker SSH connectivity check")
 
+    valid_domain_id = bool(
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", domain_id.strip())
+    )
+
     return {
         "ready": bool(
             token_path
             and token_status["valid"]
             and worker_host.strip()
             and ssh_user.strip()
+            and valid_domain_id
+            and node_config.strip()
             and brane_port.strip()
         ),
         "token_name": selected_token,
         "token_path": token_path,
         "worker_host": worker_host.strip(),
         "ssh_user": ssh_user.strip(),
+        "domain_id": domain_id.strip(),
+        "node_config": node_config.strip(),
         "brane_port": brane_port.strip(),
     }
 
@@ -396,6 +425,8 @@ def _render_policy_status(context: Dict[str, object]) -> None:
                 "--token-path", str(context["token_path"]),
                 "--worker-host", str(context["worker_host"]),
                 "--ssh-user", str(context["ssh_user"]),
+                "--domain-id", str(context["domain_id"]),
+                "--node-config", str(context["node_config"]),
                 "--brane-port", str(context["brane_port"]),
             ],
             metadata={
@@ -452,6 +483,8 @@ def _render_policy_upload(context: Dict[str, object]) -> None:
                 "--token-path", str(context["token_path"]),
                 "--worker-host", str(context["worker_host"]),
                 "--ssh-user", str(context["ssh_user"]),
+                "--domain-id", str(context["domain_id"]),
+                "--node-config", str(context["node_config"]),
                 "--brane-port", str(context["brane_port"]),
             ],
             metadata={
@@ -500,6 +533,8 @@ def _render_policy_activation(context: Dict[str, object]) -> None:
                     "--token-path", str(context["token_path"]),
                     "--worker-host", str(context["worker_host"]),
                     "--ssh-user", str(context["ssh_user"]),
+                    "--domain-id", str(context["domain_id"]),
+                    "--node-config", str(context["node_config"]),
                     "--brane-port", str(context["brane_port"]),
                 ],
                 metadata={
@@ -548,6 +583,8 @@ def _render_policy_activation(context: Dict[str, object]) -> None:
                     "--token-path", str(context["token_path"]),
                     "--worker-host", str(context["worker_host"]),
                     "--ssh-user", str(context["ssh_user"]),
+                    "--domain-id", str(context["domain_id"]),
+                    "--node-config", str(context["node_config"]),
                     "--brane-port", str(context["brane_port"]),
                     "--version-id", version_id.strip(),
                 ],
