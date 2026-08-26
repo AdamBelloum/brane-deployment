@@ -314,19 +314,27 @@ add_certs() {
     _pick_instance || { press_enter; return 1; }
 
     echo ""
-    local USER_DOMAIN CA_PATH CLIENT_PATH CLIENT_KEY_PATH
+    local USER_DOMAIN CA_PATH CLIENT_PATH
+
     read -r    -p "  Domain (IP or hostname of the worker node): " USER_DOMAIN
     read -r -e -p "  Path to ca.pem:                             " CA_PATH
-    read -r -e -p "  Path to client.pem:                         " CLIENT_PATH
-    read -r -e -p "  Path to client-key.pem:                     " CLIENT_KEY_PATH
+    read -r -e -p "  Path to client identity (.pem):              " CLIENT_PATH
 
-    if [[ -z "${USER_DOMAIN}" || -z "${CA_PATH}" || -z "${CLIENT_PATH}" || -z "${CLIENT_KEY_PATH}" ]]; then
-        log_error "All fields are required. Aborting."
+    if [[ -z "${USER_DOMAIN}" || -z "${CA_PATH}" || -z "${CLIENT_PATH}" ]]; then
+        log_error "Domain, CA certificate, and client identity are required. Aborting."
         press_enter
         return 1
     fi
 
-    run_cmd "brane certs add '${CA_PATH}' '${CLIENT_PATH}' '${CLIENT_KEY_PATH}' \
+    for certificate_path in "${CA_PATH}" "${CLIENT_PATH}"; do
+        if [[ ! -f "${certificate_path}" ]]; then
+            log_error "Certificate file not found: ${certificate_path}"
+            press_enter
+            return 1
+        fi
+    done
+
+    run_cmd "brane certs add '${CA_PATH}' '${CLIENT_PATH}' \
 --instance '${SEL_INSTANCE}' --domain '${USER_DOMAIN}'"
     press_enter
 }
