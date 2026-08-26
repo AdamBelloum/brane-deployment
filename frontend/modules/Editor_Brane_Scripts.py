@@ -1,8 +1,5 @@
 import re
-import subprocess
-import sys
 from pathlib import Path
-from typing import List
 
 import streamlit as st
 
@@ -12,33 +9,11 @@ from modules.task_ui import render_task_monitor
 
 
 WORKFLOW_DIR = Path(REPO_ROOT) / "workflow_codes"
-REMOTE_RUNNER = Path(__file__).with_name("run_remote_workflow.py")
 SCRIPT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\.bs$")
-
-
-def _get_instances() -> List[str]:
-    """Return configured local Brane instance names."""
-    try:
-        result = subprocess.run(
-            [get_brane_executable(), "instance", "list"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-
-    if result.returncode != 0:
-        return []
-
-    instances = []
-    for line in result.stdout.splitlines():
-        fields = line.replace("\x00", "").strip().split()
-        if fields and fields[0].upper() != "NAME":
-            instances.append(fields[0])
-
-    return instances
+REMOTE_WORKFLOW_PAUSE_MESSAGE = (
+    "Remote workflow submission is paused pending Brane developer "
+    "clarification of planner/checker-selection behaviour."
+)
 
 
 def _save_workflow(filename: str, source: str) -> Path:
@@ -50,20 +25,20 @@ def _save_workflow(filename: str, source: str) -> Path:
 
 
 def render_brane_scripts() -> None:
-    """Render the single user-facing workflow authoring and execution page."""
+    """Render the user-facing workflow authoring and execution page."""
     st.title("Workflow Studio")
     st.markdown(
         "Write a BraneScript workflow, save it locally, and run it on this "
-        "workstation or through a configured Brane instance."
+        "workstation."
     )
 
     with st.expander("Before you run a workflow"):
         st.markdown(
             "1. Build the required package in **User Workspace → Packages**.\n"
-            "2. Configure a Brane instance in **User Workspace → Instances** "
-            "for remote execution.\n"
-            "3. Ensure the applicable domain policy has been activated by a "
-            "Policy Manager."
+            "2. Configure the required local Brane environment.\n"
+            "3. Ensure any applicable policy has been managed by a "
+            "Policy Manager.\n"
+            "4. Remote workflow submission is currently paused."
         )
 
     if "workflow_editor_filename" not in st.session_state:
@@ -114,44 +89,29 @@ if count > 10 {
 
         execution_mode = st.radio(
             "Execution target",
-            ["Remote configured instance", "Local workstation"],
+            ["Local workstation", "Remote configured instance (paused)"],
             horizontal=False,
             key="workflow_execution_mode",
         )
 
-        selected_instance = None
-        if execution_mode == "Remote configured instance":
-            instances = _get_instances()
+        remote_execution_selected = execution_mode.startswith("Remote")
 
-            if instances:
-                selected_instance = st.selectbox(
-                    "Brane instance",
-                    instances,
-                    key="workflow_instance",
-                )
-                st.caption(
-                    "The selected instance is activated immediately before "
-                    "remote workflow submission."
-                )
-            else:
-                st.warning(
-                    "No configured instances were found. Add one in "
-                    "**User Workspace → Instances** before running remotely."
-                )
+        if remote_execution_selected:
+            st.warning(REMOTE_WORKFLOW_PAUSE_MESSAGE)
+            st.caption(
+                "Remote execution will remain unavailable until the deployment "
+                "can be accepted end-to-end."
+            )
         else:
             st.caption(
                 "The workflow runs using the local Brane command configuration."
             )
 
-    remote_unavailable = (
-        execution_mode == "Remote configured instance" and not selected_instance
-    )
-
     if st.button(
-        "Run workflow",
+        "Run local workflow",
         type="primary",
         key="workflow_editor_launch",
-        disabled=remote_unavailable,
+        disabled=remote_execution_selected,
     ):
         if not SCRIPT_NAME_PATTERN.fullmatch(script_name):
             st.error(
@@ -170,47 +130,20 @@ if count > 10 {
             st.error(f"Could not save the workflow: {exc}")
             return
 
-        if execution_mode == "Remote configured instance":
-            if not REMOTE_RUNNER.is_file():
-                st.error(
-                    "The remote workflow runner is missing: "
-                    f"`{REMOTE_RUNNER}`"
-                )
-                return
-
-            command = [
-                sys.executable,
-                str(REMOTE_RUNNER),
-                "--instance",
-                selected_instance,
-                "--username",
-                workflow_user.strip(),
-                "--workflow",
-                str(workflow_path),
-            ]
-            operation = "workflow_editor_run_remote"
-            label = f"Remote workflow: {script_name} via {selected_instance}"
-            metadata = {
-                "workflow": script_name,
-                "mode": "remote",
-                "instance": selected_instance,
-                "username": workflow_user.strip(),
-            }
-        else:
-            command = [
-                get_brane_executable(),
-                "workflow",
-                "run",
-                workflow_user.strip(),
-                script_name,
-            ]
-            operation = "workflow_editor_run_local"
-            label = f"Local workflow: {script_name}"
-            metadata = {
-                "workflow": script_name,
-                "mode": "local",
-                "username": workflow_user.strip(),
-            }
+        command = [
+            get_brane_executable(),
+            "workflow",
+            "run",
+            workflow_user.strip(),
+            script_name,
+        ]
+        operation = "workflow_editor_run_local"
+        label = f"Local workflow: {script_name}"
+        metadata = {
+            "workflow": script_name,
+            "mode": "local",
+            "username": workflow_user.strip(),
+        }
 
         task, error = task_manager.start_task(
             role="user",
@@ -226,7 +159,7 @@ if count > 10 {
             st.error(error)
         else:
             st.session_state.workflow_editor_task_id = task["id"]
-            st.success("Workflow execution started in the background.")
+            st.success("Local workflow execution started in the background.")
             st.rerun()
 
     task_id = st.session_state.get("workflow_editor_task_id")

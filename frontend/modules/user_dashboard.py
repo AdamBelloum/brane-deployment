@@ -331,17 +331,13 @@ def _render_package_management() -> None:
         render_task_monitor(package_build_task_id, title="Package build progress")
 
 
-def _certificate_bundle_paths(certificate_name: str) -> tuple[Path, Path, Path]:
-    """Return expected certificate paths without reading private-key contents."""
+def _certificate_bundle_paths(certificate_name: str) -> tuple[Path, Path]:
+    """Return the required CA and bundled client identity paths."""
     bundle_directory = Path(CERTS_DIR) / certificate_name
-    ca_path = bundle_directory / "ca.pem"
-    client_path = bundle_directory / "client.pem"
-
-    if not client_path.is_file():
-        client_path = bundle_directory / "client-id.pem"
-
-    key_path = bundle_directory / "client-key.pem"
-    return ca_path, client_path, key_path
+    return (
+        bundle_directory / "ca.pem",
+        bundle_directory / "client-id.pem",
+    )
 
 
 def _render_certificate_management() -> None:
@@ -351,26 +347,28 @@ def _render_certificate_management() -> None:
         "Select a local certificate bundle for a Brane domain. Certificate "
         "contents and private keys are never displayed in this interface."
     )
+    st.caption(
+        "A supported bundle contains `ca.pem` and `client-id.pem`. "
+        "`client-id.pem` contains the client certificate and private key."
+    )
 
     certificate_names = list_certs()
 
     if not certificate_names:
         st.info(
             "No certificate bundles were found. Store a bundle in "
-            "`certs/<domain>/` containing `ca.pem`, `client.pem` or "
-            "`client-id.pem`, and `client-key.pem`."
+            "`certs/<domain>/` containing `ca.pem` and `client-id.pem`."
         )
         return
 
     bundle_rows = []
     for certificate_name in certificate_names:
-        ca_path, client_path, key_path = _certificate_bundle_paths(certificate_name)
+        ca_path, client_id_path = _certificate_bundle_paths(certificate_name)
         missing_files = [
             label
             for label, file_path in {
                 "CA certificate": ca_path,
-                "Client certificate": client_path,
-                "Client private key": key_path,
+                "Client identity bundle": client_id_path,
             }.items()
             if not file_path.is_file()
         ]
@@ -400,13 +398,26 @@ def _render_certificate_management() -> None:
     if not ready_certificates:
         st.warning(
             "No complete certificate bundle is available for registration. "
-            "Complete one bundle before continuing."
+            "A bundle requires both `ca.pem` and `client-id.pem`."
+        )
+        return
+
+    instances = _get_instances()
+    if not instances:
+        st.warning(
+            "No Brane instance is configured. Add an instance before "
+            "registering a certificate bundle."
         )
         return
 
     st.markdown("#### Register certificate bundle")
 
     with st.form("register_certificate_form"):
+        selected_instance = st.selectbox(
+            "Brane instance",
+            instances,
+            help="The instance that will receive this domain certificate.",
+        )
         selected_certificate = st.selectbox(
             "Certificate bundle",
             ready_certificates,
@@ -427,9 +438,7 @@ def _render_certificate_management() -> None:
             st.error("A Brane domain ID is required.")
             return
 
-        ca_path, client_path, key_path = _certificate_bundle_paths(
-            selected_certificate
-        )
+        ca_path, client_id_path = _certificate_bundle_paths(selected_certificate)
 
         task, error = task_manager.start_task(
             role="user",
@@ -440,13 +449,15 @@ def _render_certificate_management() -> None:
                 "certs",
                 "add",
                 str(ca_path),
-                str(client_path),
-                str(key_path),
+                str(client_id_path),
+                "--instance",
+                selected_instance,
                 "--domain",
                 domain_name.strip(),
             ],
             cwd=os.path.dirname(PACKAGES_DIR),
             metadata={
+                "instance": selected_instance,
                 "certificate_bundle": selected_certificate,
                 "domain": domain_name.strip(),
             },

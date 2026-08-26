@@ -30,6 +30,7 @@ RECIPIENT_EMAIL=""
 CLIENT_ID=""
 OUTPUT_NAME=""
 FORCE=0
+ASSUME_YES=0
 
 usage() {
     cat <<'EOF'
@@ -53,6 +54,7 @@ Options:
       --output-name NAME      Bundle directory name below the output root.
                               Default: <client-id>-<selected-host>
   -f, --force                 Permit replacement of an existing local bundle.
+  -y, --yes                   Confirm issuance without an interactive prompt.
   -h, --help                  Show this help message.
 
 Output bundle:
@@ -89,6 +91,8 @@ while [[ $# -gt 0 ]]; do
             OUTPUT_NAME="$2"; shift 2 ;;
         --force|-f)
             FORCE=1; shift ;;
+        --yes|-y)
+            ASSUME_YES=1; shift ;;
         --help|-h)
             usage; exit 0 ;;
         *)
@@ -267,8 +271,13 @@ printf '  Target domain:       %s (%s)\n' "${SEL_NODE}" "${SEL_HOST}"
 printf '  Recipient:           %s <%s>\n' "${RECIPIENT_NAME}" "${RECIPIENT_EMAIL}"
 printf '  Client identity:     %s\n' "${CLIENT_ID}"
 printf '  Local bundle path:   %s\n\n' "${LOCAL_DIR}"
-read -r -p "  Issue this certificate bundle? [y/N]: " CONFIRM
-[[ "${CONFIRM}" =~ ^[Yy]([Ee][Ss])?$ ]] || { log_info "Certificate issuance cancelled."; exit 0; }
+if [[ "${ASSUME_YES}" -ne 1 ]]; then
+    read -r -p "  Issue this certificate bundle? [y/N]: " CONFIRM
+    [[ "${CONFIRM}" =~ ^[Yy]([Ee][Ss])?$ ]] || {
+        log_info "Certificate issuance cancelled."
+        exit 0
+    }
+fi
 
 # ── Verify active remote CA and Brane generator ──────────────────────────────
 log_info "Checking active CA and Brane generator on ${SEL_NODE}..."

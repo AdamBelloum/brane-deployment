@@ -2,9 +2,24 @@
 
 from __future__ import annotations
 
+import re
+
 import streamlit as st
 
 from modules import task_store
+
+
+
+# Terminal programs may write ANSI escape sequences for colour or formatting.
+# Streamlit code blocks do not interpret them, so remove them before rendering.
+ANSI_ESCAPE_PATTERN = re.compile(
+    r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
+)
+
+
+def _display_log_text(text: str) -> str:
+    """Return task-log text safe for plain Streamlit rendering."""
+    return ANSI_ESCAPE_PATTERN.sub("", text)
 
 
 STATUS_ICON = {
@@ -57,7 +72,12 @@ def render_activity_sidebar() -> None:
         st.sidebar.caption("Open **Task History** for logs and details.")
 
 
-def render_task_monitor(task_id: str, title: str = "Operation progress") -> None:
+def render_task_monitor(
+    task_id: str,
+    title: str = "Operation progress",
+    *,
+    historical: bool = False,
+) -> None:
     """Render persistent state, metadata, timestamps, and the task-log tail."""
     task = task_store.read_task(task_id)
     if task is None:
@@ -76,7 +96,13 @@ def render_task_monitor(task_id: str, title: str = "Operation progress") -> None
     elif status == "succeeded":
         st.success(f"{icon} {task['label']} completed successfully.")
     elif status == "failed":
-        st.error(f"{icon} {task['label']} failed; inspect the log below.")
+        if historical:
+            st.caption(
+                f"Historical task record: {task['label']} failed. "
+                "Its saved log is shown below."
+            )
+        else:
+            st.error(f"{icon} {task['label']} failed; inspect the log below.")
     elif status == "interrupted":
         st.warning("! The process is no longer present; its final exit status could not be recovered.")
     else:
@@ -105,7 +131,7 @@ def render_task_monitor(task_id: str, title: str = "Operation progress") -> None
 
     show_log = status in task_store.ACTIVE_STATUSES or status in {"failed", "interrupted"}
     with st.expander("Task log", expanded=show_log):
-        st.code(task_store.read_log_tail(task), language="text")
+        st.code(_display_log_text(task_store.read_log_tail(task)), language="text")
 
 
 def render_task_history() -> None:

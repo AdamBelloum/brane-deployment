@@ -20,7 +20,6 @@ from modules.config import (
     INVENTORY_PATH,
     POLICY_TOKENS_DIR,
     REPO_ROOT,
-    list_certs,
     list_policy_tokens,
 )
 from modules.task_manager import start_task
@@ -81,21 +80,38 @@ def _get_worker_domains() -> Dict[str, str]:
         return {}
 
 
-def _create_certs_zip(domain: str) -> Tuple[bool, bytes, str]:
-    """Create an in-memory ZIP containing one domain's certificate bundle."""
+def _list_issued_certificate_bundles() -> list[str]:
+    """Return complete end-user bundles below certs/users/ only."""
+    bundles_root = CERTS_DIR / "users"
+    if not bundles_root.is_dir():
+        return []
+
+    return sorted(
+        entry.name
+        for entry in bundles_root.iterdir()
+        if (
+            entry.is_dir()
+            and (entry / "ca.pem").is_file()
+            and (entry / "client-id.pem").is_file()
+        )
+    )
+
+
+def _create_certs_zip(bundle_name: str) -> Tuple[bool, bytes, str]:
+    """Create an in-memory ZIP containing one issued end-user bundle."""
     try:
-        domain_cert_dir = CERTS_DIR / domain
-        if not domain_cert_dir.is_dir():
-            return False, b"", "Certificate directory no longer exists."
+        bundle_dir = CERTS_DIR / "users" / bundle_name
+        if not bundle_dir.is_dir():
+            return False, b"", "Certificate bundle no longer exists."
 
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            for file_path in sorted(domain_cert_dir.iterdir()):
+            for file_path in sorted(bundle_dir.iterdir()):
                 if file_path.is_file():
                     archive.write(file_path, arcname=file_path.name)
 
         zip_buffer.seek(0)
-        return True, zip_buffer.getvalue(), f"brane-certs-{domain}.zip"
+        return True, zip_buffer.getvalue(), f"brane-certs-{bundle_name}.zip"
     except OSError as exc:
         return False, b"", f"Could not package certificates: {exc}"
 
@@ -147,7 +163,7 @@ def _start_health_check() -> None:
     _start_admin_task(
         operation="infrastructure_health_check",
         label="Run infrastructure health check",
-        command=["bash", str(script_path)],
+        command=["bash", str(script_path), "--inventory", str(INVENTORY_PATH)],
         cwd=ANSIBLE_DIR,
         metadata={
             "read_only": True,
@@ -186,7 +202,7 @@ def _render_status_summary(worker_domains: Dict[str, str]) -> None:
     with col1:
         st.metric("Configured domains", len(worker_domains))
     with col2:
-        st.metric("Certificate bundles", len(list_certs()))
+        st.metric("Certificate bundles", len(_list_issued_certificate_bundles()))
     with col3:
         st.metric("Task monitors", monitored_tasks)
 
@@ -390,11 +406,11 @@ def _render_deployment_panel() -> None:
 
 
 def _render_certificates_panel(worker_domains: Dict[str, str]) -> None:
-    """Render generation and secure download of one domain certificate bundle."""
+    """Render issuance and secure download of end-user certificate bundles."""
     st.markdown("### Domain certificates")
     st.warning(
-        "Certificate bundles include a private key. Download and share them "
-        "only through an approved secure channel."
+        "Each bundle contains a private key. Download and share it only through "
+        "an approved secure channel."
     )
 
     if not worker_domains:
@@ -409,31 +425,44 @@ def _render_certificates_panel(worker_domains: Dict[str, str]) -> None:
         key="admin_certificate_domain",
     )
     inventory_host = worker_domains[selected_domain]
-
     st.caption(
         f"Brane domain `{selected_domain}` is deployed on inventory host "
         f"`{inventory_host}`."
     )
 
-    st.markdown("#### Generate replacement bundle")
-    st.warning(
-        f"Generating a certificate for `{selected_domain}` replaces its current "
-        "client certificate and private key."
+    st.markdown("#### Issue end-user certificate bundle")
+    st.caption(
+        "The bundle is issued from this domain's active CA and is stored below "
+        "`certs/users/`. Deployment CA directories are never replaced."
     )
 
-    confirm_replacement = st.checkbox(
-        "I understand that this replaces the current certificate bundle.",
-        key="admin_confirm_certificate_replacement",
+    recipient_name = st.text_input(
+        "Recipient name",
+        key="admin_certificate_recipient_name",
+        placeholder="e.g. Alice Example",
+    )
+    recipient_email = st.text_input(
+        "Recipient email address",
+        key="admin_certificate_recipient_email",
+        placeholder="e.g. alice@example.org",
+    )
+    confirm_issuance = st.checkbox(
+        "I understand that the generated bundle contains a private key.",
+        key="admin_confirm_certificate_issuance",
     )
 
     generate_col, close_col = st.columns(2)
     with generate_col:
         if st.button(
-            "Generate certificate bundle",
+            "Issue certificate bundle",
             key="admin_generate_certificate",
             type="primary",
-            disabled=not confirm_replacement,
+            disabled=not confirm_issuance,
         ):
+            if not recipient_name.strip() or not recipient_email.strip():
+                st.error("A recipient name and email address are required.")
+                return
+
             script_path = Path(REPO_ROOT) / "scripts" / "brane_gen_cert.sh"
             if not script_path.is_file():
                 st.error("The certificate-generation script is unavailable.")
@@ -441,7 +470,7 @@ def _render_certificates_panel(worker_domains: Dict[str, str]) -> None:
 
             _start_admin_task(
                 operation="domain_certificate_generate",
-                label=f"Generate certificate bundle: {selected_domain}",
+                label=f"Issue certificate bundle: {selected_domain}",
                 command=[
                     "bash",
                     str(script_path),
@@ -449,15 +478,20 @@ def _render_certificates_panel(worker_domains: Dict[str, str]) -> None:
                     str(INVENTORY_PATH),
                     "--node",
                     inventory_host,
-                    "--output-name",
-                    selected_domain,
+                    "--recipient-name",
+                    recipient_name.strip(),
+                    "--recipient-email",
+                    recipient_email.strip(),
                     "--output-dir",
-                    str(CERTS_DIR),
+                    str(CERTS_DIR / "users"),
+                    "--yes",
                 ],
                 cwd=REPO_ROOT,
                 metadata={
                     "domain_id": selected_domain,
                     "inventory_host": inventory_host,
+                    "recipient_name": recipient_name.strip(),
+                    "recipient_email": recipient_email.strip(),
                 },
                 lock_name="certificate-generation",
                 session_key="admin_certificate_task_id",
@@ -468,27 +502,27 @@ def _render_certificates_panel(worker_domains: Dict[str, str]) -> None:
             st.session_state.admin_active_panel = None
             st.rerun()
 
-    st.markdown("#### Download existing bundle")
-    certificate_domains = list_certs()
+    st.markdown("#### Download issued bundle")
+    certificate_bundles = _list_issued_certificate_bundles()
 
-    if not certificate_domains:
-        st.info("No local certificate bundles are available yet.")
+    if not certificate_bundles:
+        st.info("No issued end-user certificate bundles are available yet.")
         return
 
-    download_domain = st.selectbox(
-        "Certificate bundle to download",
-        certificate_domains,
-        key="admin_download_certificate_domain",
+    download_bundle = st.selectbox(
+        "Issued certificate bundle",
+        certificate_bundles,
+        key="admin_download_certificate_bundle_name",
     )
 
     if st.button(
         "Prepare certificate download",
         key="admin_prepare_certificate_download",
     ):
-        success, zip_data, filename = _create_certs_zip(download_domain)
+        success, zip_data, filename = _create_certs_zip(download_bundle)
         if success:
             st.session_state.admin_certificate_download = {
-                "domain": download_domain,
+                "bundle": download_bundle,
                 "data": zip_data,
                 "filename": filename,
             }
@@ -496,7 +530,7 @@ def _render_certificates_panel(worker_domains: Dict[str, str]) -> None:
             st.error(filename)
 
     prepared_download = st.session_state.get("admin_certificate_download")
-    if prepared_download and prepared_download.get("domain") == download_domain:
+    if prepared_download and prepared_download.get("bundle") == download_bundle:
         st.download_button(
             label=f"Download {prepared_download['filename']}",
             data=prepared_download["data"],
@@ -505,7 +539,6 @@ def _render_certificates_panel(worker_domains: Dict[str, str]) -> None:
             key="admin_download_certificate_bundle",
             type="primary",
         )
-
 
 def _render_policy_tokens_panel(worker_domains: Dict[str, str]) -> None:
     """Render policy-manager token generation and secure download."""
@@ -565,6 +598,10 @@ def _render_policy_tokens_panel(worker_domains: Dict[str, str]) -> None:
                     manager_name.strip(),
                     "--domain-id",
                     domain_id,
+                    "--worker-alias",
+                    worker_domains[domain_id],
+                    "--inventory",
+                    str(INVENTORY_PATH),
                     "--validity",
                     validity.strip(),
                     "--token-dir",
